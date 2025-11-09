@@ -5,6 +5,10 @@ services:
       context: ./Database
       dockerfile: ./Dockerfile
     volumes:
+     - dbdata:/var/lib/mysql
      - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql
     ports:
      - 3306:3306
+
+volumes:
+  dbdata:
