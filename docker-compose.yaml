@@ -1,0 +1,10 @@
+services:
+  db:
+    container_name: Database
+    build:
+      context: ./Database
+      dockerfile: ./Dockerfile
+    volumes:
+     - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql
+    ports:
+     - 3306:3306
