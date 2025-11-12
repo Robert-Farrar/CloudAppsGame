@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  nginx:
+  # need this double checked may need to change whence nginx is up
+    container_name: nginx
+    build:
+      context: ./nginx
+      dockerfile: ./Dockerfile
+    ports:
+     - 80:80
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    # not to sure bout this part but nginx needs to wait for the web app to start so it makes sense to me
+    depends_on:
+     - web
+    restart: always
+
+  web:
+    # build from local dockerfile (assumed to be in the current directory) may need to change this
+    build: ./Dockerfile
+    # exposing port 8500 internally for nginx.
+    expose: 
+      - "8500"
+
+    environment:
+      - DATABASE_URL=mysql://user:password@db:3306/mydb
+    # ensure db is started before the web app attempts to connect
+    depends_on:
+      - db
+    restart: always
+
+    # idk if you want this way or not so imma leave it commented for now and if we need it cool if not delete it
+    # --- Database Service (MariaDB container) ---
+  # db:
+    # 2a. Use the latest official MariaDB image
+    #image: mariadb:latest
+    
+    # 2b. Set critical environment variables for MariaDB setup
+   # environment:
+      # Set the root password as required
+    #  MYSQL_ROOT_PASSWORD: ThisIsThePassword1!
+      # Set the initial database name
+     # MYSQL_DATABASE: cloudgame
+      
+    # 2c. Persist data to the named volume 'mariadb_data'
+   # volumes:
+     # - mariadb_data:/var/lib/mysql
+      
+    #restart: always
+
+  db:
+    container_name: Database
+    build:
+      context: ./Database
+      dockerfile: ./Dockerfile
+    volumes:
+     - dbdata:/var/lib/mysql
+     - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql
+    ports:
+     - 3306:3306
+
+volumes:
+  dbdata:
+  #added this here to define the volume for the db container
+    driver: local
