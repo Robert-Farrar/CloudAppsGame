@@ -2,7 +2,7 @@
 FROM nginx:stable-alpine
 
 #remove the default nginx welcome files
-RUN rm - rf/user/share/nginx/html/*
+RUN rm -rf /user/share/nginx/html
 # Set the working directory inside the container
 WORKDIR /app
 
