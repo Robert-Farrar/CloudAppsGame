@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8500
 
-CMD ["python", "main.py"]
+CMD ["python", "gameServer.py"]

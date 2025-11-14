@@ -22,7 +22,7 @@ services:
   web:
     container_name: web
     build:
-      context: ./Database/web/
+      context: ./websocketForGameServer
       dockerfile: Dockerfile
     expose:
       - "8500"
