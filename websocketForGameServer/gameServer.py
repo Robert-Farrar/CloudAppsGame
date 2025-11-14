@@ -13,16 +13,81 @@ USERS: Dict[str, websockets.WebSocketServerProtocol] = {} # {user_id: websocket}
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
+import mysql.connector
+from mysql.connector import Error
+import logging
+
+# --- Configuration ---
+DB_HOST = "localhost"         # Change to your DB host if necessary
+DB_USER = "cloud"             # This is the user we created in your SQL script
+DB_PASSWORD = "ThisIsThePassword1!"  # The password
+DB_NAME = "cloudgame"         # Database name
+
+def getConnection():
+    """Create and return a connection to the MariaDB database."""
+    try:
+        connection = mysql.connector.connect(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        if connection.is_connected():
+            logging.info("Successfully connected to the database.")
+            return connection
+    except Error as e:
+        logging.error(f"Error connecting to the database: {e}")
+        return None
+
+
 def fetch_game_state_from_db(game_id: str) -> Dict:
     """Mocks fetching game state from MariaDB."""
-    # In a real application, this would execute a SELECT query.
-    return DATABASE_MOCK.get(game_id, {"status": "new", "players": []})
+    connection = getConnection()
+    if not connection:
+        return {"status": "error", "message": "Database connection failed."}
+    
+    try:
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM game WHERE game_id = %s", (game_id,))
+        result = cursor.fetchone()
+        cursor.close()
+
+        if result:
+            return result  # Returns the game state row as a dictionary
+        else:
+            return {"status": "new", "players": []}  # Return a default state if no game found
+    except Error as e:
+        logging.error(f"Error fetching game state: {e}")
+        return {"status": "error", "message": "Failed to fetch game state from DB."}
+    finally:
+        connection.close()
 
 def persist_game_state_to_db(game_id: str, state: Dict):
     """Mocks saving game state to MariaDB via an UPDATE query."""
-    # In a real application, this would execute an UPDATE query wrapped in a transaction.
-    DATABASE_MOCK[game_id] = state
-    logging.info(f"Game {game_id} state persisted to MariaDB.")
+    connection = getConnection()
+    if not connection:
+        logging.error("Database connection failed. Cannot persist game state.")
+        return
+
+    try:
+        cursor = connection.cursor()
+        # Example SQL update, you can adjust this based on your table schema
+        update_query = """
+            UPDATE game 
+            SET status = %s, players = %s, last_card = %s, current_turn = %s
+            WHERE game_id = %s
+        """
+        cursor.execute(
+            update_query,
+            (state["status"], json.dumps(state["players"]), state["last_card"], state["current_turn"], game_id)
+        )
+        connection.commit()
+        cursor.close()
+        logging.info(f"Game {game_id} state persisted to MariaDB.")
+    except Error as e:
+        logging.error(f"Error persisting game state: {e}")
+    finally:
+        connection.close()
 
 async def send_message(websocket: websockets.WebSocketServerProtocol, type: str, data: Dict):
     """Utility function to send structured JSON message."""
@@ -76,7 +141,7 @@ async def handle_message(websocket: websockets.WebSocketServerProtocol, message:
                 
                 # Mock update:
                 state['last_card'] = card_played
-                state['current_turn'] = 'other_player' # Simplified turn swap
+                state['current_turn'] = 'other_player'  # Simplified turn swap
                 
                 # 4. Save state back to MariaDB
                 persist_game_state_to_db(game_id, state)
