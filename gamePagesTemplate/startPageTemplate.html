@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Centered Top Logo with Username</title>
+  <style>
+    :root{
+      --bg:#f7f7f7;
+      --header-padding:20px;
+      --accent:#0b66ff;
+    }
+    html,body{
+      height:100%;
+      margin:0;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+      background:var(--bg);
+      color:#111;
+    }
+
+    /* Header: center logo and stack the input underneath */
+    .header {
+      display:flex;
+      flex-direction:column;   /* stack logo and input */
+      align-items:center;      /* center horizontally */
+      padding:var(--header-padding) 16px;
+      gap:12px;                /* space between logo and input */
+      background:transparent;
+      text-align: center;
+    }
+
+    .logo-wrap {
+      background:transparent;
+      border-radius:6px;
+      padding:6px;
+      margin-left: 10px;
+    }
+
+    .logo {
+      max-width:min(500px,45%);
+      height:auto;
+     
+    }
+
+    /* Username input styling: input on its own row, start button underneath */
+    .username-form {
+      width:100%;
+      max-width:360px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:stretch;
+      justify-content:center;
+    }
+
+    .username-form input[type="text"]{
+      width:100%;
+      padding:12px 14px;
+      border:1px solid #d0d0d0;
+      border-radius:8px;
+      font-size:16px;
+      outline:none;
+      transition:box-shadow .12s, border-color .12s;
+    }
+
+    .username-form input[type="text"]:focus{
+      border-color:var(--accent);
+      box-shadow:0 0 0 4px rgba(11,102,255,0.08);
+    }
+
+    .username-form .start-button{
+      background-image: url('images/playbtn.png');
+      background-size: 100% 100%;
+      background-repeat: no-repeat;
+      background-position: center;
+      display: block;
+      width: 154px;
+      height: 52px;
+      border: none;
+      padding: 0px;
+      cursor: pointer;
+      align-self: center; /* center within the column-flex form */
+      margin-top: 20px;
+      
+    }
+
+    .username-form .start-button[disabled]{
+      opacity:0.7;
+      cursor:default;
+    }
+
+    .content{
+      padding:24px;
+      max-width:900px;
+      margin:0 auto;
+    }
+
+    .message {
+      margin-top:12px;
+      font-size:15px;
+    }
+
+    .message.error { color: #b00020; }
+    .message.success { color: #0b8a27; }
+
+    /* Visually-hidden label for accessibility */
+    .sr-only{
+      position:absolute !important;
+      width:1px !important;
+      height:1px !important;
+      padding:0 !important;
+      margin:-1px !important;
+      overflow:hidden !important;
+      clip:rect(0 0 0 0) !important;
+      white-space:nowrap !important;
+      border:0 !important;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo-wrap">
+      <img class="logo" src="images/mathletesLogo.gif" alt="Mathletes">
+    </div>
+
+    <!-- The form's action is the server endpoint this page will POST to.
+         Change the action attribute below to your server URL (e.g. /start or https://api.example.com/start). -->
+          <div id="formMessage" class="message" aria-live="polite"></div>
+    <form class="username-form" id="usernameForm" action="/start" method="post" autocomplete="off" novalidate>
+      <label class="sr-only" for="username">Username</label>
+      <input id="username" name="username" type="text" placeholder="Enter username" maxlength="64" aria-label="Username" required />
+      <button class="start-button" id="startButton" type="submit" aria-label="Start"></button>
+
+    </form>
+  </header>
+
+  <main class="content">
+    
+  </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById('usernameForm');
+      const input = document.getElementById('username');
+      const startButton = document.getElementById('startButton');
+      const messageEl = document.getElementById('formMessage');
+
+      // Helper to show messages
+      function showMessage(text, type) {
+        messageEl.textContent = text;
+        messageEl.className = 'message ' + (type === 'error' ? 'error' : (type === 'success' ? 'success' : ''));
+      }
+
+      // Submit handler: send JSON to form.action using fetch
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const username = input.value.trim();
+
+        if (!username) {
+          showMessage('Please enter a username.', 'error');
+          input.focus();
+          return;
+        }
+
+        // Disable UI while sending
+        startButton.disabled = true;
+        const previousText = startButton.textContent;
+        startButton.textContent = 'Starting...';
+        showMessage('', '');
+
+        try {
+          // If you prefer form-encoded data instead of JSON, replace the fetch body and headers with FormData()
+          const resp = await fetch(form.action, {
+            method: (form.method || 'POST').toUpperCase(),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            // Send JSON payload { username: "..." }
+            body: JSON.stringify({ username })
+          });
+
+          // Try to parse JSON response if available
+          let data;
+          const contentType = resp.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            data = await resp.json();
+          } else {
+            data = { message: await resp.text() };
+          }
+
+          if (resp.ok) {
+            // Expect server to return a success message in JSON: { success: true, message: "..." }
+            showMessage(data.message || 'Started successfully.', 'success');
+            // Optionally clear the input:
+            // input.value = '';
+          } else {
+            // Server returned an error status; show message if provided
+            const errMsg = data && (data.error || data.message) ? (data.error || data.message) : ('Request failed with status ' + resp.status);
+            showMessage(errMsg, 'error');
+            // If server provides field errors, you can surface them here (not implemented by default)
+          }
+        } catch (err) {
+          // Network or CORS error
+          showMessage('Network error: ' + (err.message || err), 'error');
+        } finally {
+          startButton.disabled = false;
+          startButton.textContent = previousText;
+        }
+      });
+
+      // Focus input on load for convenience
+      window.addEventListener('DOMContentLoaded', () => { if (input) input.focus(); });
+    })();
+  </script>
+</body>
+</html>
+
