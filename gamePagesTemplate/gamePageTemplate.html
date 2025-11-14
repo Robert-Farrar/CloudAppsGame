@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Number Crunch - Multiplayer Card Challenge</title>
+    <style>
+        body {
+            background-image: url(images/gamePageBGAni.gif);
+            background-repeat: no-repeat;
+            background-size: cover;
+            background-attachment: fixed;
+        }
+
+        /* Flip card styles */
+        .flip-card {
+            width: 300px;
+            height: 300px;
+            perspective: 1000px;
+            margin: 40px auto; /* center the card */
+        }
+
+        .flip-card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            cursor: pointer;
+        }
+
+        .flip-card.is-flipped .flip-card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .flip-card-front{
+            position: absolute;
+            width: auto;
+            height: auto;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            box-sizing: border-box;
+            border-radius: 8px;
+            background: transparent;
+        }
+        .flip-card-back {
+            position: absolute;
+            width:222px;
+            height:304px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotateY(180deg);
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            display: flex;
+            overflow: hidden;
+            box-sizing: border-box;
+            border-radius: 8px;
+            background: transparent;
+        }
+
+        .flip-card-front img.card-image {
+            width: 213px;
+            height: 294px;
+            object-fit: contain;
+        }
+
+        .flip-card-back img.back-card-image {
+            width: auto;
+            height: auto;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+    <!-- Page content goes here -->
+    <div class="flip-card" id="mainFlipCard" aria-label="card">
+        <div class="flip-card-inner">
+            <div class="flip-card-front">
+                <!-- card image will be inserted here -->
+                <img class="card-image" src="images/cards/cardBack.png" alt="card front">
+            </div>
+            <div class="flip-card-back">
+                <!-- card image from the card object will be inserted here -->
+                <img class="back-card-image" src="images/cards/blankCard.png" alt="card back" style="width:100%;height:100%;object-fit:contain;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Include your cards helper file (adjust path if needed) -->
+    <script src="cardDeck.js"></script>
+
+    <script>
+        // Flip-card behavior: on click, fetch a card (via your cards.js helpers) and flip the card.
+        (function () {
+            const flipCardEl = document.getElementById('mainFlipCard');
+            const frontImg = flipCardEl.querySelector('.flip-card-front img.card-image');
+            const backImg = flipCardEl.querySelector('.flip-card-back img.back-card-image');
+            
+            // Helper: safe call to getRandomCard or getCardById
+            function fetchCardByIdOrRandom(id) {
+                // Note: your getRandomCard helper accepts an array to restrict allowed IDs: getRandomCard([1])
+                if (typeof window.getRandomCard === 'function') {
+                    if (typeof id === 'number') return window.getRandomCard([id]);
+                    return window.getRandomCard();
+                }
+                if (typeof window.getCardById === 'function') {
+                    return window.getCardById(id || 1);
+                }
+                return null;
+            }
+
+            // Update the flip-card back with the card image
+            function renderCard(card) {
+                if (!card) return;
+                if (card.img) backImg.src = card.img;
+            }
+
+            flipCardEl.addEventListener('click', function () {
+                // get the card (for id=1). To pick a random card instead, call fetchCardByIdOrRandom() with no arg.
+                const card = fetchCardByIdOrRandom(1);
+                if (card) renderCard(card);
+                flipCardEl.classList.toggle('is-flipped');
+            });
+
+            // Preload an initial card
+            window.addEventListener('DOMContentLoaded', function () {
+                const initial = fetchCardByIdOrRandom(1);
+                if (initial) renderCard(initial);
+            });
+        })();
+    </script>
+</body>
+</html>
