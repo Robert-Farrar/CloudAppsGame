@@ -2,8 +2,8 @@ import asyncio
 import websockets
 import json
 import logging
-# FIX 1: Use the new, non-deprecated type hint from the protocol module
-from websockets.protocol import WebSocketCoreProtocol 
+# FIX 1: Use the explicit path for the server protocol class to resolve ImportError
+from websockets.server import WebSocketServerProtocol 
 from typing import Dict, Any, Optional, List
 import aiomysql 
 
@@ -21,14 +21,14 @@ DB_USER = "app_user"
 DB_PASSWORD = "app_password"
 DB_NAME = "cloudgame"         
 
-# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
-USERS: Dict[str, WebSocketCoreProtocol] = {} # {user_id: websocket}
+# FIX 1: Use WebSocketServerProtocol for type hinting
+USERS: Dict[str, WebSocketServerProtocol] = {} # {user_id: websocket}
 
 
 async def init_db_pool():
     """
     Initializes the MariaDB connection pool using aiomysql with retry logic.
-    FIX 2: Implements exponential backoff to handle the DB not being ready at server start.
+    Implements exponential backoff to handle the DB not being ready at server start.
     """
     global DB_POOL
     max_retries = 10
@@ -159,14 +159,32 @@ async def persist_game_state_to_db(game_id: str, state: Dict, card_played_id: Op
 
 
 # --- WebSocket & Broadcast Logic ---
-# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
-async def send_message(websocket: WebSocketCoreProtocol, type: str, data: Dict):
+# FIX 1: Use WebSocketServerProtocol for type hinting
+async def send_message(websocket: WebSocketServerProtocol, type: str, data: Dict):
     """Utility function to send structured JSON message."""
     message = json.dumps({"type": type, "data": data})
     await websocket.send(message)
 
-# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
-async def register(websocket: WebSocketCoreProtocol, user_id: str):
+# NEW FUNCTION: Broadcast game state to all connected users
+async def broadcast_game_state(game_id: str, state: Dict):
+    """
+    Sends the state update to all registered users.
+    NOTE: In a real game, this should only send to users belonging to the specific game_id.
+    """
+    # For this conceptual implementation, we broadcast to ALL registered users.
+    websockets_to_send = list(USERS.values())
+    if not websockets_to_send:
+        logging.info("No connected users to broadcast to.")
+        return
+        
+    logging.info(f"Broadcasting STATE_UPDATE for game {game_id} to {len(websockets_to_send)} users.")
+    
+    # We create a list of send tasks and run them concurrently
+    messages = [send_message(ws, "STATE_UPDATE", state) for ws in websockets_to_send]
+    await asyncio.gather(*messages, return_exceptions=True)
+
+# FIX 1: Use WebSocketServerProtocol for type hinting
+async def register(websocket: WebSocketServerProtocol, user_id: str):
     """Handles new user registration and connection."""
     USERS[user_id] = websocket
     logging.info(f"User {user_id} connected. Total users: {len(USERS)}")
@@ -177,8 +195,8 @@ async def unregister(user_id: str):
         del USERS[user_id]
     logging.info(f"User {user_id} disconnected. Total users: {len(USERS)}")
 
-# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
-async def handle_message(websocket: WebSocketCoreProtocol, message: str):
+# FIX 1: Use WebSocketServerProtocol for type hinting
+async def handle_message(websocket: WebSocketServerProtocol, message: str):
     """Parses incoming message and executes game logic."""
     try:
         data = json.loads(message)
@@ -244,8 +262,8 @@ async def handle_message(websocket: WebSocketCoreProtocol, message: str):
         await send_message(websocket, "ERROR", {"message": "Server error."})
 
 
-# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
-async def game_handler(websocket: WebSocketCoreProtocol, path: str):
+# FIX 1: Use WebSocketServerProtocol for type hinting
+async def game_handler(websocket: WebSocketServerProtocol, path: str):
     """Main entry point for new WebSocket connections."""
     # Use memory address as a temporary ID until the client sends a CONNECT message
     temp_user_id = str(id(websocket)) 
