@@ -2,14 +2,10 @@ import asyncio
 import websockets
 import json
 import logging
+# FIX 1: Import the specific common protocol type to resolve the deprecation warning
+from websockets import WebSocketCommonProtocol 
 from typing import Dict, Any, Optional, List
-import aiomysql
-
-# --- Configuration ---
-# idk if we need this but keeping it here for now someone might need the info later 
-# NOTE: This section has been updated to reflect connection to a SQL Database (MariaDB)
-
- # DATABASE_MOCK: Dict[str, Any] = {}
+import aiomysql 
 
 # --- Configuration & Initialization ---
 
@@ -19,13 +15,15 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 DB_POOL: Optional[aiomysql.Pool] = None
 
 # Configuration variables (matching what you had for environment variables)
-# NOTE: In Docker Compose, DB_HOST should be 'mariadb'
-DB_HOST = "localhost"         
-DB_USER = "cloud"             
-DB_PASSWORD = "ThisIsThePassword1!"
+# FIX 2: Change DB_HOST to 'mariadb' (the service name) to connect in Docker Compose
+DB_HOST = "mariadb"         
+# FIX 2: Use credentials defined in docker-compose.yml for consistency
+DB_USER = "app_user"             
+DB_PASSWORD = "app_password"
 DB_NAME = "cloudgame"         
 
-USERS: Dict[str, websockets.WebSocketServerProtocol] = {} # {user_id: websocket}
+# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
+USERS: Dict[str, WebSocketCommonProtocol] = {} # {user_id: websocket}
 
 
 async def init_db_pool():
@@ -43,6 +41,7 @@ async def init_db_pool():
         )
         logging.info(f"Successfully connected to MariaDB: {DB_NAME}")
     except Exception as e:
+        # The connection failed error is logged here
         logging.error(f"Failed to connect to MariaDB: {e}")
         # Raise an error if the server can't connect to the DB
         raise RuntimeError("Database connection failed, server cannot start.") from e
@@ -144,23 +143,14 @@ async def persist_game_state_to_db(game_id: str, state: Dict, card_played_id: Op
 
 
 # --- WebSocket & Broadcast Logic ---
-async def send_message(websocket: websockets.WebSocketServerProtocol, type: str, data: Dict):
+# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
+async def send_message(websocket: WebSocketCommonProtocol, type: str, data: Dict):
     """Utility function to send structured JSON message."""
     message = json.dumps({"type": type, "data": data})
     await websocket.send(message)
 
-async def broadcast_game_state(game_id: str, state: Dict):
-    """Sends the new state to all connected players in the game."""
-    # NOTE: This implementation is still conceptual and broadcasts to ALL connected USERS.
-    # A real implementation would filter by users in the game_id.
-    for user_id, ws in USERS.items():
-        # A simple check: if the user's ID (which is currently a string) matches a player in the game state
-        if int(user_id) in state.get('players', []):
-             # To fully implement a broadcast, we would fetch the state *specific* to each receiving user (including their hand)
-             # For simplicity, we send the general state + the specific player's hand that was just played.
-             await send_message(ws, "STATE_UPDATE", state) 
-            
-async def register(websocket: websockets.WebSocketServerProtocol, user_id: str):
+# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
+async def register(websocket: WebSocketCommonProtocol, user_id: str):
     """Handles new user registration and connection."""
     USERS[user_id] = websocket
     logging.info(f"User {user_id} connected. Total users: {len(USERS)}")
@@ -171,7 +161,8 @@ async def unregister(user_id: str):
         del USERS[user_id]
     logging.info(f"User {user_id} disconnected. Total users: {len(USERS)}")
 
-async def handle_message(websocket: websockets.WebSocketServerProtocol, message: str):
+# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
+async def handle_message(websocket: WebSocketCommonProtocol, message: str):
     """Parses incoming message and executes game logic."""
     try:
         data = json.loads(message)
@@ -237,7 +228,8 @@ async def handle_message(websocket: websockets.WebSocketServerProtocol, message:
         await send_message(websocket, "ERROR", {"message": "Server error."})
 
 
-async def game_handler(websocket: websockets.WebSocketServerProtocol, path: str):
+# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
+async def game_handler(websocket: WebSocketCommonProtocol, path: str):
     """Main entry point for new WebSocket connections."""
     # Use memory address as a temporary ID until the client sends a CONNECT message
     temp_user_id = str(id(websocket)) 
