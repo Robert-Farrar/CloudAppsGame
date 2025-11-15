@@ -19,14 +19,18 @@ services:
       - appnet
 
   # Web / Application Server
-  web:
-    container_name: web
+  game_server:
+    container_name: game_server
     build:
       context: ./websocketForGameServer
       dockerfile: Dockerfile
     expose:
-      - "8500"
+      - "8000"
     environment:
+      DB_HOST: "db"
+      DB_USER: "user"
+      DB_PASSWORD: "password"
+      DB_NAME: "mydb" 
       DATABASE_URL: "mysql://user:password@db:3306/mydb"
     depends_on:
       - db
@@ -45,6 +49,11 @@ services:
       - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql:ro
     ports:
       - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "rootpassword"
+      MYSQL_DATABASE: "mydb"
+      MYSQL_USER: "user"
+      MYSQL_PASSWORD: "password"
     restart: always
     networks:
       - appnet
