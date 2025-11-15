@@ -2,8 +2,8 @@ import asyncio
 import websockets
 import json
 import logging
-# FIX 1: Import the specific common protocol type to resolve the deprecation warning
-from websockets import WebSocketCommonProtocol 
+# FIX 1: Use the new, non-deprecated type hint from the protocol module
+from websockets.protocol import WebSocketCoreProtocol 
 from typing import Dict, Any, Optional, List
 import aiomysql 
 
@@ -15,36 +15,52 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 DB_POOL: Optional[aiomysql.Pool] = None
 
 # Configuration variables (matching what you had for environment variables)
-# FIX 2: Change DB_HOST to 'mariadb' (the service name) to connect in Docker Compose
+# DB_HOST remains 'mariadb' (the service name in docker-compose)
 DB_HOST = "mariadb"         
-# FIX 2: Use credentials defined in docker-compose.yml for consistency
 DB_USER = "app_user"             
 DB_PASSWORD = "app_password"
 DB_NAME = "cloudgame"         
 
-# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
-USERS: Dict[str, WebSocketCommonProtocol] = {} # {user_id: websocket}
+# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
+USERS: Dict[str, WebSocketCoreProtocol] = {} # {user_id: websocket}
 
 
 async def init_db_pool():
-    """Initializes the MariaDB connection pool using aiomysql."""
+    """
+    Initializes the MariaDB connection pool using aiomysql with retry logic.
+    FIX 2: Implements exponential backoff to handle the DB not being ready at server start.
+    """
     global DB_POOL
-    try:
-        # Establish connection pool
-        DB_POOL = await aiomysql.create_pool(
-            host=DB_HOST,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            db=DB_NAME,
-            minsize=1,
-            maxsize=10,
-        )
-        logging.info(f"Successfully connected to MariaDB: {DB_NAME}")
-    except Exception as e:
-        # The connection failed error is logged here
-        logging.error(f"Failed to connect to MariaDB: {e}")
-        # Raise an error if the server can't connect to the DB
-        raise RuntimeError("Database connection failed, server cannot start.") from e
+    max_retries = 10
+    base_delay = 2  # seconds
+    
+    for attempt in range(max_retries):
+        try:
+            logging.info(f"Attempting to connect to MariaDB (Attempt {attempt + 1}/{max_retries})...")
+            # Establish connection pool
+            DB_POOL = await aiomysql.create_pool(
+                host=DB_HOST,
+                port=3306, # Explicitly use the default port
+                user=DB_USER,
+                password=DB_PASSWORD,
+                db=DB_NAME,
+                minsize=1,
+                maxsize=10,
+                autocommit=True # Ensure commits happen automatically for simple queries
+            )
+            logging.info(f"Successfully connected to MariaDB: {DB_NAME}")
+            return
+        except Exception as e:
+            logging.warning(f"Failed to connect to MariaDB: {e}")
+            if attempt + 1 == max_retries:
+                logging.error("Exceeded max retries. Database connection failed permanently.")
+                # Raise an error if the server can't connect to the DB after all retries
+                raise RuntimeError("Database connection failed, server cannot start.") from e
+            
+            # Exponential backoff: 2s, 4s, 8s, 16s, ...
+            delay = base_delay * (2 ** attempt)
+            logging.info(f"Retrying in {delay} seconds...")
+            await asyncio.sleep(delay)
 
 # --- Database Operations (Refactored to be Async) ---
 
@@ -143,14 +159,14 @@ async def persist_game_state_to_db(game_id: str, state: Dict, card_played_id: Op
 
 
 # --- WebSocket & Broadcast Logic ---
-# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
-async def send_message(websocket: WebSocketCommonProtocol, type: str, data: Dict):
+# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
+async def send_message(websocket: WebSocketCoreProtocol, type: str, data: Dict):
     """Utility function to send structured JSON message."""
     message = json.dumps({"type": type, "data": data})
     await websocket.send(message)
 
-# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
-async def register(websocket: WebSocketCommonProtocol, user_id: str):
+# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
+async def register(websocket: WebSocketCoreProtocol, user_id: str):
     """Handles new user registration and connection."""
     USERS[user_id] = websocket
     logging.info(f"User {user_id} connected. Total users: {len(USERS)}")
@@ -161,8 +177,8 @@ async def unregister(user_id: str):
         del USERS[user_id]
     logging.info(f"User {user_id} disconnected. Total users: {len(USERS)}")
 
-# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
-async def handle_message(websocket: WebSocketCommonProtocol, message: str):
+# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
+async def handle_message(websocket: WebSocketCoreProtocol, message: str):
     """Parses incoming message and executes game logic."""
     try:
         data = json.loads(message)
@@ -228,8 +244,8 @@ async def handle_message(websocket: WebSocketCommonProtocol, message: str):
         await send_message(websocket, "ERROR", {"message": "Server error."})
 
 
-# FIX 1: Use the non-deprecated type hint (WebSocketCommonProtocol)
-async def game_handler(websocket: WebSocketCommonProtocol, path: str):
+# FIX 1: Use the non-deprecated type hint (WebSocketCoreProtocol)
+async def game_handler(websocket: WebSocketCoreProtocol, path: str):
     """Main entry point for new WebSocket connections."""
     # Use memory address as a temporary ID until the client sends a CONNECT message
     temp_user_id = str(id(websocket)) 
