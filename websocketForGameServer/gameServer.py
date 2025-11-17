@@ -16,7 +16,7 @@ DB_POOL: Optional[aiomysql.Pool] = None
 
 # Configuration variables (matching what you had for environment variables)
 # DB_HOST remains 'mariadb' (the service name in docker-compose)
-DB_HOST = "localhost"
+DB_HOST = "db"
 DB_USER = "cloud"
 DB_PASSWORD = "ThisIsThePassword1!"
 DB_NAME = "cloudgame"         
