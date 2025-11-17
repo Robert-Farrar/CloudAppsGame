@@ -5,14 +5,11 @@ services:
   nginx:
     container_name: nginx
     build:
-      context: ./nginx
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: NginxDockerfile
     ports:
       - "81:80"             
     # For now read only volume, this will have to change for when we get https so certbot can update expired certs  
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./gamePagesTemplate:/usr/share/nginx/html:ro
     depends_on:
       - game_server                  
     restart: always
@@ -29,10 +26,10 @@ services:
       - "8000"
     environment:
       DB_HOST: "db"
-      DB_USER: "user"
-      DB_PASSWORD: "password"
-      DB_NAME: "mydb" 
-      DATABASE_URL: "mysql://user:password@db:3306/mydb"
+      DB_USER: "cloud"
+      DB_PASSWORD: "ThisIsThePassword1!"
+      DB_NAME: "cloudgame" 
+      DATABASE_URL: "mysql://cloud:ThisIsThePassword1!@db:3306/cloudgame"
     depends_on:
       - db
     restart: always
@@ -47,14 +44,9 @@ services:
       dockerfile: Dockerfile
     volumes:
       - dbdata:/var/lib/mysql
-      - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql:ro
+      - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql
     ports:
       - "3307:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: "rootpassword"
-      MYSQL_DATABASE: "mydb"
-      MYSQL_USER: "user"
-      MYSQL_PASSWORD: "password"
     restart: always
     networks:
       - appnet
