@@ -9,6 +9,10 @@ import aiomysql
 
 # --- Configuration & Initialization ---
 
+playerID = 0
+playerPool = {}
+
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # Global database pool instance (essential for performance in async apps)
@@ -82,19 +86,6 @@ async def fetch_game_state_from_db(game_id: str, player_id: str) -> Dict:
 
                 if not game_state:
                     return {"status": "error", "message": f"Game {game_id} not found."}
-                
-                # 2. Fetch Player Hand (Cards in Deck linked to playerID)
-                # NOTE: We use the Card table to get the full card details
-                await cur.execute("""
-                    SELECT c.cardID, c.cardValue, c.color, c.operation, d.deckID
-                    FROM Deck d
-                    JOIN Card c ON d.cardID = c.cardID
-                    WHERE d.playerID = %s
-                """, (player_id,))
-                player_hand = await cur.fetchall()
-
-                # 3. Combine results into a single state object
-                game_state['player_hand'] = player_hand
                 # Convert keys to match client expectation (e.g., game_id instead of gameID)
                 final_state = {
                     "game_id": game_state['gameID'],
@@ -136,24 +127,6 @@ async def persist_game_state_to_db(game_id: str, state: Dict, card_played_id: Op
                         game_id
                     )
                 )
-
-                # 2. Remove played card from the Deck (player's hand)
-                if card_played_id is not None:
-                    player_id_to_update = state.get("player_id") 
-                    
-                    if player_id_to_update:
-                        # Delete the specific card from the player's hand (Deck table)
-                        delete_query = """
-                            DELETE FROM Deck 
-                            WHERE playerID = %s AND cardID = %s 
-                            LIMIT 1
-                        """
-                        # NOTE: We cast player_id_to_update to str as it comes from the DB as int but is passed to DB as string
-                        await cur.execute(delete_query, (str(player_id_to_update), card_played_id)) 
-                        logging.info(f"Removed cardID {card_played_id} from Player {player_id_to_update}'s hand.")
-
-                await conn.commit()
-                logging.info(f"Game {game_id} state persisted to MariaDB.")
     except Exception as e:
         logging.error(f"Async Error persisting game state: {e}")
 
@@ -185,9 +158,30 @@ async def broadcast_game_state(game_id: str, state: Dict):
 
 # FIX 1: Use WebSocketServerProtocol for type hinting
 async def register(websocket: ServerProtocol, user_id: str):
-    """Handles new user registration and connection."""
+    """Handles new user registration and connection and stores player details."""
+    global playerID, playerPool
+    
+    # Extract client IP (websockets v10+)
+    client_ip, client_port = websocket.remote_address
+
+    # Increment playerID counter
+    playerID += 1
+
+    # Add to USERS
     USERS[user_id] = websocket
-    logging.info(f"User {user_id} connected. Total users: {len(USERS)}")
+
+    # Add player data to playerPool
+    playerPool[playerID] = {
+        "ip": client_ip,
+        "port": client_port
+        "card": {}
+    }
+
+    logging.info(
+        f"User {user_id} connected from {client_ip}. "
+        f"Assigned playerID={playerID}. Total users: {len(USERS)}"
+    )
+
 
 async def unregister(user_id: str):
     """Handles user disconnection."""
@@ -216,7 +210,6 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
         if msg_type == "CONNECT":
             await register(websocket, user_id_str)
-            # Fetch and send the initial state for the known mock game (ID=1)
             initial_game_id = "1"
             initial_state = await fetch_game_state_from_db(initial_game_id, user_id_str)
             await send_message(websocket, "STATE_UPDATE", initial_state)
