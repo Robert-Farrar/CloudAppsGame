@@ -2,17 +2,17 @@ import asyncio
 import websockets
 import json
 import logging
-# FIX 1: Use the explicit path for the server protocol class to resolve ImportError
 from websockets.server import ServerProtocol
 from typing import Dict, Any, Optional, List
 import aiomysql 
+from Card import Card
 
 # --- Configuration & Initialization ---
 
 playerID = 0
 playerPool = {}
-
-
+numPlayers = 0
+currentTurnPlayerID = 0
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # Global database pool instance (essential for performance in async apps)
@@ -86,14 +86,11 @@ async def fetch_game_state_from_db(game_id: str, player_id: str) -> Dict:
 
                 if not game_state:
                     return {"status": "error", "message": f"Game {game_id} not found."}
-                # Convert keys to match client expectation (e.g., game_id instead of gameID)
                 final_state = {
                     "game_id": game_state['gameID'],
                     "status": game_state['status'],
                     "current_turn": game_state['currentTurnPlayerID'],
                     "last_card": game_state['lastCardPlayedValue'],
-                    "player_hand": game_state['player_hand'],
-                    # Mock players list since we only have the current player's ID for now
                     "players": [game_state['currentTurnPlayerID']],
                     "player_id": int(player_id) # Send back the ID used to fetch the hand
                 }
@@ -161,11 +158,14 @@ async def register(websocket: ServerProtocol, user_id: str):
     """Handles new user registration and connection and stores player details."""
     global playerID, playerPool
     
-    # Extract client IP (websockets v10+)
+    # Extract client IP
     client_ip, client_port = websocket.remote_address
 
     # Increment playerID counter
     playerID += 1
+
+    #Increment total player counter
+    numPlayers += 1
 
     # Add to USERS
     USERS[user_id] = websocket
@@ -217,36 +217,49 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
 
         elif msg_type == "PLAY_CARD" and game_id:
-            card_value = payload.get("card_value")
-            card_id = payload.get("card_id")
-            
-            # 1. Fetch current state from MariaDB
-            state = await fetch_game_state_from_db(game_id, user_id_str)
-            
-            # --- Conceptual Game Logic Execution ---
-            if state.get("status") == "active" and user_id == state.get("current_turn"):
+            global currentTurnPlayerID
+
+            if currentTurnPlayerID == 0:
+                currentTurnPlayerID = 1
+
+            if payload.get("player_id") == currentTurnPlayerID:
+                card_value = payload.get("card_value")
+                card_color = payload.get("card_color")
+                card_operator = payload.get("card_operator")
+                player_id = payload.get("player_id")
+
+            event, card1, card2 = await checkCard(card_value, card_color, card_operator, player_id)
+
+            if event == "BATTLE":
+                battle_state = {
+                    "type": "BATTLE",
+                    "attacker_id": player_id,
+                    "card1_value": card1.value,
+                    "card1_operator": card1.operator,
+                    "card2_value": card2.value,
+                    "card2_operator": card2.operator
+                }
+
+                # BROADCAST TO ALL PLAYERS
+                await broadcast_game_state(game_id, battle_state)
+
+            elif event == "NEXT":
+                # 1. Notify current player that their turn is over
+                await send_status_to_player(player_id, "Your turn has ended.")
+
+                # 2. Determine next player
+                next_player = get_next_player(player_id)
+
+                # 3. Update turn tracker
+                currentTurnPlayerID = next_player
+
+                # 4. Notify next player
+                await send_status_to_player(next_player, "It is now your turn."))
+
+            return  # Stop further processing
+
                 
-                # Mock update:
-                state['last_card'] = card_value
-                # NOTE: Swapping turn to PlayerID 2 for mock purposes
-                state['current_turn'] = 2 
-                state['player_id'] = user_id # Needed for persist to know which hand to update
-                
-                # 2. Save state back to MariaDB and remove the played card
-                await persist_game_state_to_db(game_id, state, card_id)
-                
-                # 3. Re-fetch the updated state (now without the played card in hand)
-                updated_state = await fetch_game_state_from_db(game_id, user_id_str)
-                
-                # 4. Broadcast the change to all players
-                # In a real app, you would fetch each player's state separately and send
-                await broadcast_game_state(game_id, updated_state)
-                
-                # 5. Send confirmation back to the client that played the card
-                await send_message(websocket, "STATUS", {"message": f"Card {card_value} played. It is now turn {updated_state.get('current_turn')}"})
-            else:
-                await send_message(websocket, "ERROR", {"message": "Not your turn or game inactive."})
-            # -------------------------------------
+
 
     except json.JSONDecodeError:
         await send_message(websocket, "ERROR", {"message": "Invalid JSON format."})
@@ -270,6 +283,52 @@ async def game_handler(websocket: ServerProtocol, path: str):
     finally:
         # Unregister happens when the socket closes
         await unregister(temp_user_id) 
+
+async def checkCard(value, color, operator, player_id):
+    # 1. Store the card for this player
+    playerPool[player_id]["card"] = {
+        "value": value,
+        "color": color,
+        "operator": operator
+    }
+
+    # 2. Compare against every other player
+    for pid, player in playerPool.items():
+
+        if pid == player_id:
+            continue  # skip ourselves
+
+        other = player.get("card")
+        if not other:
+            continue
+
+        if value == other.get("value") and color == other.get("color"):
+            # BATTLE detected!
+
+            card1 = Card.Card()
+            card1.value = value
+            card1.operator = operator
+
+            card2 = Card.Card()
+            card2.value = other.get("value")
+            card2.operator = other.get("operator")
+
+            return "BATTLE", card1, card2
+            
+
+    # If no battle found, return next state
+    return "NEXT", None, None
+
+def get_next_player(current_id):
+    ids = sorted(playerPool.keys())
+    idx = ids.index(current_id)
+    return ids[(idx + 1) % len(ids)]
+
+async def send_status_to_player(player_id: int, message: str):
+    if str(player_id) in USERS:
+        ws = USERS[str(player_id)]
+        await send_message(ws, "STATUS", {"message": message})
+
 
 
 async def main():
