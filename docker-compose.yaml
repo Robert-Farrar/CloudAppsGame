@@ -1,66 +1,60 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  # Nginx proxxy
   nginx:
-  # need this double checked may need to change whence nginx is up
     container_name: nginx
     build:
-      context: ./nginx
-      dockerfile: ./Dockerfile
+      context: .
+      dockerfile: NginxDockerfile
     ports:
-     - 80:80
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-    # not to sure bout this part but nginx needs to wait for the web app to start so it makes sense to me
+      - "81:80"             
+    # For now read only volume, this will have to change for when we get https so certbot can update expired certs  
     depends_on:
-     - web
+      - game_server                  
     restart: always
+    networks:
+      - appnet
 
-  web:
-    # build from local dockerfile (assumed to be in the current directory) may need to change this
-    build: ./Dockerfile
-    # exposing port 8500 internally for nginx.
-    expose: 
-      - "8500"
-
+  # Web / Application Server
+  game_server:
+    container_name: game_server
+    build:
+      context: ./websocketForGameServer
+      dockerfile: Dockerfile
+    expose:
+      - "8000"
     environment:
-      - DATABASE_URL=mysql://user:password@db:3306/mydb
-    # ensure db is started before the web app attempts to connect
+      DB_HOST: "db"
+      DB_USER: "cloud"
+      DB_PASSWORD: "ThisIsThePassword1!"
+      DB_NAME: "cloudgame" 
+      DATABASE_URL: "mysql://cloud:ThisIsThePassword1!@db:3306/cloudgame"
     depends_on:
       - db
     restart: always
-
-    # idk if you want this way or not so imma leave it commented for now and if we need it cool if not delete it
-    # --- Database Service (MariaDB container) ---
-  # db:
-    # 2a. Use the latest official MariaDB image
-    #image: mariadb:latest
-    
-    # 2b. Set critical environment variables for MariaDB setup
-   # environment:
-      # Set the root password as required
-    #  MYSQL_ROOT_PASSWORD: ThisIsThePassword1!
-      # Set the initial database name
-     # MYSQL_DATABASE: cloudgame
+    networks:
+      - appnet
       
-    # 2c. Persist data to the named volume 'mariadb_data'
-   # volumes:
-     # - mariadb_data:/var/lib/mysql
-      
-    #restart: always
-
+  # Database 
   db:
-    container_name: Database
+    container_name: database
     build:
       context: ./Database
-      dockerfile: ./Dockerfile
+      dockerfile: Dockerfile
     volumes:
-     - dbdata:/var/lib/mysql
-     - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql
+      - dbdata:/var/lib/mysql
+      - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql
     ports:
-     - 3306:3306
+      - "3307:3306"
+    restart: always
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge
 
 volumes:
   dbdata:
-  #added this here to define the volume for the db container
     driver: local
