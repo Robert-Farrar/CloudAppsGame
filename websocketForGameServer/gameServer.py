@@ -13,6 +13,15 @@ playerID = 0
 playerPool = {}
 numPlayers = 0
 currentTurnPlayerID = 0
+
+CURRENT_BATTLE = {
+    "active": False,
+    "answer": None,
+    "winner": None,
+    "players_answered": set()
+}
+
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 # Global database pool instance (essential for performance in async apps)
@@ -174,6 +183,7 @@ async def register(websocket: ServerProtocol, user_id: str):
     playerPool[playerID] = {
         "ip": client_ip,
         "port": client_port
+        "points": 0
         "card": {}
     }
 
@@ -233,12 +243,24 @@ async def handle_message(websocket: ServerProtocol, message: str):
             if event == "BATTLE":
                 battle_state = {
                     "type": "BATTLE",
-                    "attacker_id": player_id,
                     "card1_value": card1.value,
                     "card1_operator": card1.operator,
                     "card2_value": card2.value,
                     "card2_operator": card2.operator
                 }
+
+                CURRENT_BATTLE["active"] = True
+                CURRENT_BATTLE["winner"] = None
+                CURRENT_BATTLE["answer"] = None
+                CURRENT_BATTLE["players_answered"].clear()
+                if card1_operator == '+':
+                    CURRENT_BATTLE["answer"] = card1.value + card2.value
+                elif card1_operator == '-':
+                    CURRENT_BATTLE["answer"] = card1.value - card2.value
+                elif card1_operator == '*':
+                    CURRENT_BATTLE["answer"] = card1.value * card2.value
+                elif card1_operator == '/':
+                    CURRENT_BATTLE["answer"] = card1.value - card2.value
 
                 # BROADCAST TO ALL PLAYERS
                 await broadcast_game_state(game_id, battle_state)
@@ -257,6 +279,56 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 await send_status_to_player(next_player, "It is now your turn."))
 
             return  # Stop further processing
+        
+        elif msg_type == "ANSWER":
+            if not CURRENT_BATTLE["active"]:
+                return await send_message(websocket, "STATUS", {"message": "No active battle."})
+
+            # Prevent double answers
+            if user_id in CURRENT_BATTLE["players_answered"]:
+                return await send_message(websocket, "STATUS", {"message": "You already answered."})
+
+            CURRENT_BATTLE["players_answered"].add(user_id)
+
+            # If winner already exists → ignore
+            if CURRENT_BATTLE["winner"] is not None:
+                return await send_message(websocket, "STATUS", {
+                    "message": f"Player {CURRENT_BATTLE['winner']} already won the battle."
+                })
+
+            user_answer = payload.get("answer")
+
+            if user_answer == CURRENT_BATTLE["answer"]:
+                if CURRENT_BATTLE["winner"] is None:
+                    CURRENT_BATTLE["winner"] = user_id
+                    CURRENT_BATTLE["active"] = False  # battle ends
+
+                # Award point (example)
+                playerPool[user_id]["points"] = playerPool[user_id].get("points", 0) + 1
+
+                result_state = {
+                    "type": "BATTLE_RESULT",
+                    "winner_id": user_id,
+                    "correct_answer": CURRENT_BATTLE["answer"],
+                    "points": playerPool[user_id]["points"]
+                }
+
+            # 1. Notify current player that their turn is over
+            await send_status_to_player(player_id, "Your turn has ended.")
+
+            # 2. Determine next player
+            next_player = get_next_player(player_id)
+
+            # 3. Update turn tracker
+            currentTurnPlayerID = next_player
+
+            # 4. Notify next player
+            await send_status_to_player(next_player, "It is now your turn."))
+
+            return  # Stop further processing
+
+        else:
+            return await send_message(websocket, "STATUS", {"message": "Incorrect answer!"})
 
                 
 
