@@ -1,6 +1,9 @@
 
 // Connect to the Python WebSocket server running on localhost port 8001
-const websocket = new WebSocket("ws://game_server:8000/"); //Whatever the ip in the docker is
+const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const wsHost = window.location.hostname;
+const wsPath = '/ws/';
+const websocket = new WebSocket('${wsProtocol}://${wshost}${wsPath}'); //Whatever the ip in the docker is
 
 websocket.onopen = () => {
     console.log("WebSocket connection established.");
