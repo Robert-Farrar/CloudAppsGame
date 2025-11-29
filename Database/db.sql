@@ -3,11 +3,11 @@ DROP USER IF EXISTS 'cloud'@'localhost';
 CREATE DATABASE cloudgame;
 CREATE USER 'cloud'@'localhost' IDENTIFIED BY 'ThisIsThePassword1!';
 
--- uncomment when working with docker containers
--- DROP USER IF EXISTS 'cloud'@'%';
--- CREATE USER 'cloud'@'%' IDENTIFIED BY 'ThisIsThePassword1!';
 
--- GRANT ALL ON cloudgame.* TO 'cloud'@'%'
+ DROP USER IF EXISTS 'cloud'@'%';
+ CREATE USER 'cloud'@'%' IDENTIFIED BY 'ThisIsThePassword1!';
+
+ GRANT ALL ON cloudgame.* TO 'cloud'@'%'
 
 
 GRANT ALL ON cloudgame.* TO 'cloud'@'localhost';
