@@ -11,8 +11,7 @@
             background-size: cover;
             background-attachment: fixed;
         }
-
-        /* Flip card styles */
+/* Flip card styles */
         .flip-card {
             position: fixed;
             right: 5vw;
@@ -26,7 +25,6 @@
             margin-right: 2px;
             z-index: 100;
         }
-
         .flip-card-inner {
             position: relative;
             width: 100%;
@@ -35,15 +33,12 @@
             transform-style: preserve-3d;
             cursor: pointer;
         }
-
         .flip-card.is-flipped {
             transform: translateX(-400px); /* Moves left when flipped will need jscript to check if position is filled*/
         }
-
         .flip-card.is-flipped .flip-card-inner {
             transform: rotateY(180deg);
         }
-
         .flip-card-front{ /* Technically the back of the card. Do not change */
             position: absolute;
             width: 213px;
@@ -80,19 +75,16 @@
             border-radius: 8px;
             background: transparent;
         }
-
         .flip-card-front img.card-image {
             width: 213px;
             height: 294px;
             object-fit: contain;
         }
-
         .flip-card-back img.back-card-image {
             width: 100%;
             height: 100%;
             object-fit: contain;
         }
-
         .deck { /* Just displays the deck. Card front should be positioned over this always */
             position: fixed;
             right: 5vw;
@@ -104,6 +96,7 @@
             margin-bottom: 30px;
             z-index: 100;
         }
+ /* Popup styles */       
         .form-popup {
             position: fixed;
             right: 50%;
@@ -118,36 +111,72 @@
             z-index: 200;
             border: none;
         }
-        .form-popup .btnAnswer{
-            background-image: url('images/answerbtn.png');
-            background-size: 100% 100%;
-            background-repeat: no-repeat;
-            background-color: transparent;
-            width: 279px;
-            height: 90px;
-            border: none;
-            margin-top: 10%;
-            margin-left: 25%;
-        }
-        .btnAnswer:hover {
-            cursor: pointer;
-            transform: scale(1.05);
-        }
-        .questionAnswer {
+        #popup_box {
+        display: none;
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 600px;
+        height: 400px;
+        background-image: url("images/matchW.png");
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+        padding: 20px;
+        z-index: 200;
+        border: none;
+        box-sizing: border-box;
+        }        
+        #questionAnswer {
             display: flex;
             flex-direction: row;
             align-items: center;
-            margin-top: 160px;
+            margin-top: 20%;
             margin-left: 27%;
         }
+        #btnAnswer {
+        background-image: url('images/answerbtn.png');
+        background-size: 100% 100%;
+        background-repeat: no-repeat;
+        background-color: transparent;
+        width: 279px;
+        height: 90px;
+        border: none;
+        display: block;
+        margin: 30px auto 0;
+        }
+        #btnAnswer:hover {
+            cursor: pointer;
+            transform: scale(1.05);
+        }
+        #popupBoxClose { 
+        padding: 20px;
+        display: block;
+        position: relative;
+        text-align: right;
+        }
+        #popupBoxClose #countDown {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 50px;
+        height: 50px;
+        background: #ff0000;
+        color: rgb(3, 3, 3);
+        text-align: center;
+        -webkit-border-radius: 50%;
+        border-radius: 50%;
+        font-size: 40px;
+        font-weight: bold;
+        }
+
     </style>
 </head>
 <body>
-   
      <div class="deck" id="deck">   
         <img src="images/cardDeck.png" alt="card deck img" style="width:100%;height:100%;object-fit:contain;"> 
      </div>
-     <!-- Flip Card -->
+<!-- Flip Card -->
     <div class="flip-card" id="mainFlipCard" aria-label="card">
         <div class="flip-card-inner">
             <div class="flip-card-front">
@@ -160,28 +189,26 @@
             </div>
         </div>
     </div>
-    <!-- End Flip Card -->
     
-    <!-- Start Pop up-->
+<!-- Start Pop up-->
 <!-- The form needs to pop up or openForm() when a match is made. The generated question should be passed into the form.
-       the user will then answer and hit the botton. button will need to close the form and send the given answer
-        to be checked -->
-<div class="form-popup" id="match">
-  <form action="" method="post">
-    <div class="questionAnswer">
-        <label for="question" style="font-size: xxx-large;"><b><!-- Question goes here --> 7 + 3 = </b></label>
-        <input type="answer" placeholder="  ?" style="font-size: xxx-large; width: 100px; margin-left: 10px;" name="ans" required>
+     the user will then answer and hit the botton. button will need to close the form and send the given answer
+     to be checked.-->
+    <div id="popup_box">
+        <a id="popupBoxClose"><span id="countDown"></span></a>  
+        <form action="" method="post">
+            <div id="questionAnswer">
+                <label for="question" style="font-size: xxx-large;"><b><!-- Question goes here --> 7 + 3 = </b></label>
+                <input type="answer" placeholder="  ?" style="font-size: xxx-large; width: 100px; margin-left: 10px;" name="ans" required>
+            </div>
+            <button type="submit" id="btnAnswer" onclick="closeform()"></button> 
+        </form> 
     </div>
-    <button type="submit" class="btnAnswer" type="submit" onclick="closeform()"></button>
-  </form>
-</div>
+    <div id="container"> <!-- just to open popup for testing -->
+    <p><button id="openPopup" type="button">Open Popup</button></p>
 
 
-    <!-- End Pop Up-->
-
-    <!-- Script for flip card: Holds all possible cards as well as a get random card and a compare method -->
-    <script src="cardDeck.js"></script>
-
+    <script src="cardDeck.js"></script><!-- Script for flip card: Holds all possible cards and a get random card method -->
     <script>
         // Flip-card behavior: on click, fetch a card (via your cards.js helpers) and flip the card.
         (function () {
@@ -191,7 +218,7 @@
             
             // Helper: safe call to getRandomCard or getCardById
             function fetchCardByIdOrRandom(id) {
-                // Note: your getRandomCard helper accepts an array to restrict allowed IDs: getRandomCard([1])
+                // Accepts an array to restrict allowed IDs: getRandomCard([1])
                 if (typeof window.getRandomCard === 'function') {
                     if (typeof id === 'number') return window.getRandomCard([id]);
                     return window.getRandomCard();
@@ -207,15 +234,12 @@
                 if (!card) return;
                 if (card.img) backImg.src = card.img;
             }
-
             flipCardEl.addEventListener('click', function () {
                  // If already flipped, ignore further clicks
                  if (flipCardEl.classList.contains('is-flipped')) return;
-
                  // get the card (for id=1). To pick a random card instead, call fetchCardByIdOrRandom();
                  const card = fetchCardByIdOrRandom();
                  if (card) renderCard(card);
-
                  // Mark flipped and prevent further clicks
                  flipCardEl.classList.add('is-flipped');
                  flipCardEl.style.pointerEvents = 'none';
@@ -227,8 +251,80 @@
                 if (initial) renderCard(initial);
             });
         })();
+
+
+ /* Popup script to handle popup behavior */
+            document.addEventListener('DOMContentLoaded', function () {
+                const popupBox = document.getElementById('popup_box');
+                const container = document.getElementById('container');
+                const openBtn = document.getElementById('openPopup');
+
+                const pagePopup = new Popup(popupBox, container);
+
+                openBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation(); // prevent the click from bubbling to the container
+                    pagePopup.load();
+                });
+            });
+
+            function Popup(popup, container) {
+                this.popup = popup;
+                this.container = container;
+                this.timer = null;
+                this.counter = 10;
+                this.countDownEl = this.popup.querySelector('#countDown');
+                this._outsideHandler = null;
+                this._closeHandler = null;
+
+                this.load = function () {
+            // sets counter
+                    this.counter = 7;
+                    if (this.countDownEl) this.countDownEl.textContent = String(this.counter);
+                    // dim page
+                    this.container.style.transition = 'opacity 250ms';
+                    this.container.style.opacity = '0.3';
+                    // show popup with fade
+                    this.popup.style.display = 'block';
+                    this.popup.style.opacity = '0';
+                    this.popup.style.transition = 'opacity 250ms';
+                    // ensure a tick before changing opacity so transition runs
+                    setTimeout(() => { this.popup.style.opacity = '1'; }, 10);
+                    // clicking the page (container) closes the popup
+                    this._outsideHandler = (e) => { if (!this.popup.contains(e.target)) this.unload(); };
+                    // add outside handler after current event loop so the opening click doesn't trigger it
+                    setTimeout(() => { this.container.addEventListener('click', this._outsideHandler); }, 0);
+                    // close link
+                    const closeBtn = document.getElementById('popupBoxClose');
+                    this._closeHandler = (e) => { e.preventDefault(); this.unload(); };
+                    if (closeBtn) closeBtn.addEventListener('click', this._closeHandler);
+                    // start countdown
+                    const self = this;
+                    this.timer = setInterval(function () {
+                        self.counter--;
+                        if (self.counter < 0) {
+                            self.unload();
+                        } else if (self.countDownEl) {
+                            self.countDownEl.textContent = String(self.counter);
+                        }
+                    }, 1000);
+                };
+
+                this.unload = function () {
+                    if (this.timer) {
+                        clearInterval(this.timer);
+                        this.timer = null;
+                    }
+                    // remove handlers
+                    if (this._outsideHandler) this.container.removeEventListener('click', this._outsideHandler);
+                    const closeBtn = document.getElementById('popupBoxClose');
+                    if (closeBtn && this._closeHandler) closeBtn.removeEventListener('click', this._closeHandler);
+                    // fade out popup and restore container
+                    this.popup.style.opacity = '0';
+                    this.container.style.opacity = '1';
+                    setTimeout(() => { this.popup.style.display = 'none'; }, 250);
+                };
+            }       
     </script>
-
-
 </body>
 </html>
