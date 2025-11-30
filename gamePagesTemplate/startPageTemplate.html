@@ -184,6 +184,7 @@
           // Handle server responses based on message type
           if (message.type === 'STATUS') {
             showMessage(message.data.message, 'success');
+             window.location.href = '/game';
           } else if (message.type === 'ERROR') {
             showMessage(message.data.message, 'error');
           }
