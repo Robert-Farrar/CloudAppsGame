@@ -204,127 +204,244 @@
             <button type="submit" id="btnAnswer" onclick="closeform()"></button> 
         </form> 
     </div>
-    <div id="container"> <!-- just to open popup for testing -->
-    <p><button id="openPopup" type="button">Open Popup</button></p>
-
 
     <script src="cardDeck.js"></script><!-- Script for flip card: Holds all possible cards and a get random card method -->
     <script>
-        // Flip-card behavior: on click, fetch a card (via your cards.js helpers) and flip the card.
-        (function () {
-            const flipCardEl = document.getElementById('mainFlipCard');
-            const frontImg = flipCardEl.querySelector('.flip-card-front img.card-image');
-            const backImg = flipCardEl.querySelector('.flip-card-back img.back-card-image');
-            
-            // Helper: safe call to getRandomCard or getCardById
-            function fetchCardByIdOrRandom(id) {
-                // Accepts an array to restrict allowed IDs: getRandomCard([1])
-                if (typeof window.getRandomCard === 'function') {
-                    if (typeof id === 'number') return window.getRandomCard([id]);
-                    return window.getRandomCard();
-                }
-                if (typeof window.getCardById === 'function') {
-                    return window.getCardById(id || 1);
-                }
-                return null;
-            }
+let ws = null;
+let reconnectTimeout = null;
+let popupInstance = null;
 
-            // Update the flip-card back with the card image
-            function renderCard(card) {
-                if (!card) return;
-                if (card.img) backImg.src = card.img;
-            }
-            flipCardEl.addEventListener('click', function () {
-                 // If already flipped, ignore further clicks
-                 if (flipCardEl.classList.contains('is-flipped')) return;
-                 // get the card (for id=1). To pick a random card instead, call fetchCardByIdOrRandom();
-                 const card = fetchCardByIdOrRandom();
-                 if (card) renderCard(card);
-                 // Mark flipped and prevent further clicks
-                 flipCardEl.classList.add('is-flipped');
-                 flipCardEl.style.pointerEvents = 'none';
-            });
+let userId = null;
+let gameId = null;
 
-            // Preload an initial card
-            window.addEventListener('DOMContentLoaded', function () {
-                const initial = fetchCardByIdOrRandom();
-                if (initial) renderCard(initial);
-            });
-        })();
+// Disable the flip card until we have userId
+const flipCardEl = document.getElementById('mainFlipCard');
+flipCardEl.style.pointerEvents = 'none'; 
 
+// Initialize popup instance after DOM is ready
+window.addEventListener("DOMContentLoaded", () => {
+    popupInstance = new Popup(document.getElementById("popup_box"));
+});
 
- /* Popup script to handle popup behavior */
-            document.addEventListener('DOMContentLoaded', function () {
-                const popupBox = document.getElementById('popup_box');
-                const container = document.getElementById('container');
-                const openBtn = document.getElementById('openPopup');
+function connectWebSocket() {
+    console.log("Connecting websocket...");
+    ws = new WebSocket(`ws://${window.location.host}/ws`);
 
-                const pagePopup = new Popup(popupBox, container);
+    ws.addEventListener("open", () => {
+        console.log("WS connected on game page.");
+        // Request user + game data
+        ws.send(JSON.stringify({ type: "REQUEST_DATA", payload: { user_id: "0", game_id: "0" } }));
+    });
 
-                openBtn.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    e.stopPropagation(); // prevent the click from bubbling to the container
-                    pagePopup.load();
-                });
-            });
+    ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(event.data);
+        console.log("WS MESSAGE:", msg);
 
-            function Popup(popup, container) {
-                this.popup = popup;
-                this.container = container;
-                this.timer = null;
-                this.counter = 10;
-                this.countDownEl = this.popup.querySelector('#countDown');
-                this._outsideHandler = null;
-                this._closeHandler = null;
+        // Handle REQUEST_DATA response
+        if (msg.type === "REQUEST_DATA") {
+            if (msg.data?.status === "ok") {
+                userId = String(msg.data.user_id);
+                gameId = String(msg.data.game_id);
+                console.log("Player data received:", userId, gameId);
 
-                this.load = function () {
-            // sets counter
-                    this.counter = 7;
-                    if (this.countDownEl) this.countDownEl.textContent = String(this.counter);
-                    // dim page
-                    this.container.style.transition = 'opacity 250ms';
-                    this.container.style.opacity = '0.3';
-                    // show popup with fade
-                    this.popup.style.display = 'block';
-                    this.popup.style.opacity = '0';
-                    this.popup.style.transition = 'opacity 250ms';
-                    // ensure a tick before changing opacity so transition runs
-                    setTimeout(() => { this.popup.style.opacity = '1'; }, 10);
-                    // clicking the page (container) closes the popup
-                    this._outsideHandler = (e) => { if (!this.popup.contains(e.target)) this.unload(); };
-                    // add outside handler after current event loop so the opening click doesn't trigger it
-                    setTimeout(() => { this.container.addEventListener('click', this._outsideHandler); }, 0);
-                    // close link
-                    const closeBtn = document.getElementById('popupBoxClose');
-                    this._closeHandler = (e) => { e.preventDefault(); this.unload(); };
-                    if (closeBtn) closeBtn.addEventListener('click', this._closeHandler);
-                    // start countdown
-                    const self = this;
-                    this.timer = setInterval(function () {
-                        self.counter--;
-                        if (self.counter < 0) {
-                            self.unload();
-                        } else if (self.countDownEl) {
-                            self.countDownEl.textContent = String(self.counter);
-                        }
-                    }, 1000);
-                };
+                // Enable flip card now
+                flipCardEl.style.pointerEvents = 'auto';
 
-                this.unload = function () {
-                    if (this.timer) {
-                        clearInterval(this.timer);
-                        this.timer = null;
+                // Now we can safely send RECONNECT
+                ws.send(JSON.stringify({
+                    type: "RECONNECT",
+                    payload: {
+                        msg: "Player rejoined game",
+                        user_id: String(userId),
+                        game_id: gameId
                     }
-                    // remove handlers
-                    if (this._outsideHandler) this.container.removeEventListener('click', this._outsideHandler);
-                    const closeBtn = document.getElementById('popupBoxClose');
-                    if (closeBtn && this._closeHandler) closeBtn.removeEventListener('click', this._closeHandler);
-                    // fade out popup and restore container
-                    this.popup.style.opacity = '0';
-                    this.container.style.opacity = '1';
-                    setTimeout(() => { this.popup.style.display = 'none'; }, 250);
-                };
-            }       
-    </script>
+                }));
+            } else {
+                console.warn("Could not get player data:", msg.data?.message);
+            }
+        }
+
+        if (msg.type === "TURN" || (msg.type === "STATUS" && msg.message?.includes("It is now your turn."))) {
+        if (msg.player_id === userId || msg.type === "STATUS") {
+            enableCardDraw();
+        }
+            }
+
+
+        // Handle BATTLE messages
+        if (msg.type === "BATTLE" && popupInstance) {
+            // Pass card data to the popup for display if needed
+            popupInstance.load(msg);
+        }
+
+        // Handle other messages (CARD, RESULT, etc.)
+    });
+
+    ws.addEventListener("close", () => {
+        console.warn("WS closed. Reconnecting in 1.5s...");
+        reconnectTimeout = setTimeout(connectWebSocket, 1500);
+    });
+
+    ws.addEventListener("error", (err) => {
+        console.error("WS ERROR:", err);
+    });
+}
+
+// Start WebSocket as soon as page loads
+window.addEventListener("DOMContentLoaded", connectWebSocket);
+
+// ---- Flip card click handler ----
+(function() {
+    const frontImg = flipCardEl.querySelector('.flip-card-front img.card-image');
+    const backImg = flipCardEl.querySelector('.flip-card-back img.back-card-image');
+
+    function fetchCardByIdOrRandom(id) {
+        if (typeof window.getRandomCard === 'function') {
+            return typeof id === 'number' ? window.getRandomCard([id]) : window.getRandomCard();
+        }
+        if (typeof window.getCardById === 'function') {
+            return window.getCardById(id || 1);
+        }
+        return null;
+    }
+
+    function renderCard(card) {
+        if (!card) return;
+        if (card.img) backImg.src = card.img;
+    }
+
+    flipCardEl.addEventListener('click', function() {
+        if (flipCardEl.classList.contains('is-flipped')) return;
+        if (!userId || !gameId) {
+            console.warn("Cannot play card before user/game IDs are set.");
+            return;
+        }
+
+        const card = fetchCardByIdOrRandom();
+        if (!card) return;
+
+        renderCard(card);
+
+        if (gameId && userId && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: "PLAY_CARD",
+                payload: {
+                    color: card.color,
+                    value: card.value,
+                    operator: card.sign,
+                    user_id: String(userId),
+                    game_id: String(gameId)
+                }
+            }));
+            console.log("PLAY_CARD SENT:", {
+                id: card.id,
+                color: card.color,
+                value: card.value,
+                operator: card.sign,
+                user_id: userId,
+                game_id: gameId
+            });
+        }
+
+        flipCardEl.classList.add('is-flipped');
+        flipCardEl.style.pointerEvents = 'none';
+    });
+
+    // Preload initial card
+    window.addEventListener('DOMContentLoaded', function() {
+        const initial = fetchCardByIdOrRandom();
+        if (initial) renderCard(initial);
+    });
+})();
+
+function enableCardDraw() {
+    const flipCardEl = document.getElementById('mainFlipCard');
+    flipCardEl.classList.remove('is-flipped');   // Reset flip state
+    flipCardEl.style.pointerEvents = 'auto';     // Allow clicking again
+
+    // Optional: reset card image to default back
+    const backImg = flipCardEl.querySelector('.flip-card-back img.back-card-image');
+    backImg.src = "images/cards/blankCard.png";  
+
+    console.log("It's your turn! You can draw a card.");
+}
+
+// ---- Popup logic ----
+function Popup(popup) {
+    this.popup = popup;
+    this.timer = null;
+    this.counter = 10;
+    this.countDownEl = this.popup.querySelector('#countDown');
+    this._outsideHandler = null;
+    this._closeHandler = null;
+
+    this.load = (battleData) => {
+        this.counter = 7;
+        if (this.countDownEl) this.countDownEl.textContent = String(this.counter);
+
+        // Show popup
+        this.popup.style.display = 'block';
+        this.popup.style.opacity = '0';
+        setTimeout(() => { this.popup.style.opacity = '1'; }, 10);
+
+        // Outside click to close
+        this._outsideHandler = (e) => { if (!this.popup.contains(e.target)) this.unload(); };
+        document.addEventListener('click', this._outsideHandler);
+
+        // Close button
+        const closeBtn = document.getElementById('popupBoxClose');
+        this._closeHandler = (e) => { e.preventDefault(); this.unload(); };
+        if (closeBtn) closeBtn.addEventListener('click', this._closeHandler);
+
+        // Setup form submission
+        const form = this.popup.querySelector('form');
+        if (form) {
+            form.onsubmit = (e) => {
+                e.preventDefault();
+                const answerInput = form.querySelector('input[name="ans"]');
+                if (!answerInput || !answerInput.value) return;
+
+                const answer = answerInput.value;
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: "ANSWER",
+                        payload: {
+                            answer: answer,
+                            user_id: userId,
+                            game_id: gameId
+                        }
+                    }));
+                    console.log("ANSWER SENT:", answer);
+                }
+
+                this.unload();
+            };
+        }
+
+        // Countdown
+        this.timer = setInterval(() => {
+            this.counter--;
+            if (this.counter < 0) this.unload();
+            else if (this.countDownEl) this.countDownEl.textContent = String(this.counter);
+        }, 1000);
+    };
+
+    this.unload = () => {
+        if (this.timer) {
+            clearInterval(this.timer);
+            this.timer = null;
+        }
+
+        if (this._outsideHandler) document.removeEventListener('click', this._outsideHandler);
+        const closeBtn = document.getElementById('popupBoxClose');
+        if (closeBtn && this._closeHandler) closeBtn.removeEventListener('click', this._closeHandler);
+
+        this.popup.style.opacity = '0';
+        setTimeout(() => { this.popup.style.display = 'none'; }, 250);
+    };
+}
+</script>
+
 </body>
 </html>

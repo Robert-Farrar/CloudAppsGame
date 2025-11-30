@@ -6,6 +6,7 @@ from websockets.server import ServerProtocol
 from typing import Dict, Any, Optional, List
 import aiomysql 
 from Card import Card
+import traceback
 
 # --- Configuration & Initialization ---
 
@@ -191,7 +192,7 @@ async def register(websocket: ServerProtocol, user_id: str, username: str):
     }
 
     logging.info(
-        f"User {user_id} connected from {client_ip}. "
+        f"User {playerID} connected from {client_ip}. "
         f"Assigned playerID={playerID}. Total users: {len(USERS)}"
     )
 
@@ -202,6 +203,13 @@ async def unregister(user_id: str):
         del USERS[user_id]
     logging.info(f"User {user_id} disconnected. Total users: {len(USERS)}")
 
+async def get_player_by_ip(ip: str) -> Optional[int]:
+    """Finds the player_id of a connected user by IP address."""
+    for pid, pdata in playerPool.items():
+        if pdata.get("ip") == ip:
+            return pid
+    return None
+
 # FIX 1: Use WebSocketServerProtocol for type hinting
 async def handle_message(websocket: ServerProtocol, message: str):
     """Parses incoming message and executes game logic."""
@@ -211,9 +219,10 @@ async def handle_message(websocket: ServerProtocol, message: str):
         payload = data.get("payload", {})
         
         # User ID is mandatory for game actions
-        user_id_str = payload.get("user_id") 
-        game_id = payload.get("game_id")
-        
+        user_id_str = payload.get("user_id", "") 
+        game_id = payload.get("game_id", "")
+
+
         if not user_id_str or not user_id_str.isdigit():
              # For the mock setup, we assume user_id is the PlayerID (int=1)
             return await send_message(websocket, "ERROR", {"message": "Invalid or missing numeric user_id"})
@@ -230,18 +239,22 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
         elif msg_type == "PLAY_CARD" and game_id:
             global currentTurnPlayerID
-
+            card_value = None 
+            card_color = None 
+            card_operator = None 
+            user_id = None
             if currentTurnPlayerID == 0:
                 currentTurnPlayerID = 1
 
-            if payload.get("player_id") == currentTurnPlayerID:
-                card_value = payload.get("card_value")
-                card_color = payload.get("card_color")
-                card_operator = payload.get("card_operator")
-                player_id = payload.get("player_id")
+            if int(payload.get("user_id")) == currentTurnPlayerID:
+                card_value = payload.get("value")
+                card_color = payload.get("color")
+                card_operator = payload.get("operator")
+                user_id = payload.get("user_id")
 
-            event, card1, card2 = await checkCard(card_value, card_color, card_operator, player_id)
-
+            logging.info("Checking card")
+            event, card1, card2 = await checkCard(card_value, card_color, card_operator, user_id)
+            logging.info(event)
             if event == "BATTLE":
                 battle_state = {
                     "type": "BATTLE",
@@ -273,7 +286,6 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
                 # 2. Determine next player
                 next_player = get_next_player(player_id)
-
                 # 3. Update turn tracker
                 currentTurnPlayerID = next_player
 
@@ -328,6 +340,32 @@ async def handle_message(websocket: ServerProtocol, message: str):
             await send_status_to_player(next_player, "It is now your turn.")
 
             return  # Stop further processing
+                # ---------------------------------------------------------
+        #   NEW: REQUEST_DATA  → return user_id + game_id by IP
+        # ---------------------------------------------------------
+        if msg_type == "REQUEST_DATA":
+            client_ip, client_port = websocket.remote_address
+
+            # Try to find an existing player by IP
+            pid = await get_player_by_ip(client_ip)
+
+            if pid is None:
+                return await send_message(websocket, "REQUEST_DATA", {
+                    "status": "error",
+                    "message": "Player not found for this IP.",
+                    "ip": client_ip
+                })
+
+            # Game ID is currently static, but scalable later
+            game_id = 1
+
+            return await send_message(websocket, "REQUEST_DATA", {
+                "status": "ok",
+                "user_id": pid,
+                "game_id": game_id,
+                "ip": client_ip
+            })
+
 
         else:
             return await send_message(websocket, "STATUS", {"message": "Incorrect answer!"})
@@ -338,6 +376,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
     except json.JSONDecodeError:
         await send_message(websocket, "ERROR", {"message": "Invalid JSON format."})
     except Exception as e:
+        traceback.print_exc()
         logging.error(f"Error handling message: {e}")
         await send_message(websocket, "ERROR", {"message": "Server error."})
 
@@ -359,6 +398,9 @@ async def game_handler(websocket: ServerProtocol):
         await unregister(temp_user_id) 
 
 async def checkCard(value, color, operator, player_id):
+
+    logging.info("Player ID: " + str(player_id))
+
     # 1. Store the card for this player
     playerPool[player_id]["card"] = {
         "value": value,
@@ -396,6 +438,7 @@ async def checkCard(value, color, operator, player_id):
 def get_next_player(current_id):
     ids = sorted(playerPool.keys())
     idx = ids.index(current_id)
+
     return ids[(idx + 1) % len(ids)]
 
 async def send_status_to_player(player_id: int, message: str):
