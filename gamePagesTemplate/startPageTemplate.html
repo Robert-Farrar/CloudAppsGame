@@ -169,16 +169,38 @@
         showMessage('', '');
 
         try {
-          // If you prefer form-encoded data instead of JSON, replace the fetch body and headers with FormData()
-          const resp = await fetch(form.action, {
-            method: (form.method || 'POST').toUpperCase(),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            },
-            // Send JSON payload { username: "..." }
-            body: JSON.stringify({ username })
-          });
+          const ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+        ws.addEventListener('open', () => {
+          console.log("WebSocket connection opened.");
+          // Send CONNECT message after connection is opened
+          ws.send(JSON.stringify({ type: "CONNECT", payload: {username: username, user_id: "0", game_id: "0" }}));
+        });
+
+        ws.addEventListener('message', (event) => {
+          const message = JSON.parse(event.data);
+          console.log("Received message:", message);
+
+          // Handle server responses based on message type
+          if (message.type === 'STATUS') {
+            showMessage(message.data.message, 'success');
+          } else if (message.type === 'ERROR') {
+            showMessage(message.data.message, 'error');
+          }
+        });
+
+        ws.addEventListener('error', (error) => {
+          console.error("WebSocket error:", error);
+          showMessage("There was an error with the connection.", 'error');
+        });
+
+        ws.addEventListener('close', () => {
+          console.log("WebSocket connection closed.");
+          showMessage("Connection closed.", 'error');
+        });
+
+
+
 
           // Try to parse JSON response if available
           let data;
