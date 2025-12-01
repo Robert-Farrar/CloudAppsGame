@@ -261,10 +261,9 @@ function connectWebSocket() {
             }
         }
 
-        if (msg.type === "TURN" || (msg.type === "STATUS" && msg.message?.includes("It is now your turn."))) {
-        if (msg.player_id === userId || msg.type === "STATUS") {
-            enableCardDraw();
-        }
+        if (msg.type === "TURN" || (msg.type === "STATUS" && msg.data?.message?.includes("It is now your turn."))) {
+                console.log("You Turn")
+                enableCardDraw()
             }
 
 
@@ -278,8 +277,11 @@ function connectWebSocket() {
     });
 
     ws.addEventListener("close", () => {
-        console.warn("WS closed. Reconnecting in 1.5s...");
+        console.warn(`WS closed with code: ${event.code}, reason: ${event.reason}`);
+        if (event.code !== 1000) {
+        console.warn("Reconnecting in 1.5s...");
         reconnectTimeout = setTimeout(connectWebSocket, 1500);
+    }
     });
 
     ws.addEventListener("error", (err) => {
@@ -341,6 +343,9 @@ window.addEventListener("DOMContentLoaded", connectWebSocket);
                 user_id: userId,
                 game_id: gameId
             });
+        }else {
+        console.warn("WebSocket is not open. Attempting to reconnect.");
+        connectWebSocket();  // Attempt to reconnect or notify user
         }
 
         flipCardEl.classList.add('is-flipped');

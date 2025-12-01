@@ -197,8 +197,8 @@ async def register(websocket: ServerProtocol, user_id: str, username: str):
     )
 
 
-async def unregister(user_id: str):
-    """Handles user disconnection."""
+async def unregister(user_id):
+    user_id = user_id  # normalize
     if user_id in USERS:
         del USERS[user_id]
     logging.info(f"User {user_id} disconnected. Total users: {len(USERS)}")
@@ -328,10 +328,10 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 }
 
             # 1. Notify current player that their turn is over
-            await send_status_to_player(player_id, "Your turn has ended.")
+            await send_status_to_player(user_id, "Your turn has ended.")
 
             # 2. Determine next player
-            next_player = get_next_player(player_id)
+            next_player = get_next_player(user_id)
 
             # 3. Update turn tracker
             currentTurnPlayerID = next_player
@@ -348,7 +348,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
             # Try to find an existing player by IP
             pid = await get_player_by_ip(client_ip)
-
+            USERS[pid] = websocket
             if pid is None:
                 return await send_message(websocket, "REQUEST_DATA", {
                     "status": "error",
@@ -384,18 +384,29 @@ async def handle_message(websocket: ServerProtocol, message: str):
 # FIX 1: Use WebSocketServerProtocol for type hinting
 async def game_handler(websocket: ServerProtocol):
     """Main entry point for new WebSocket connections."""
-    # Use memory address as a temporary ID until the client sends a CONNECT message
-    temp_user_id = str(id(websocket)) 
-
     try:
-        # We wait for the client to send the CONNECT message with a proper user_id (PlayerID)
+        # Remove stale websocket for this IP if it exists
+        client_ip = websocket.remote_address[0]
+        old_player = await get_player_by_ip(client_ip)
+        if old_player is not None:
+            await unregister(old_player)
+
+        # Now wait for client messages
         async for message in websocket:
             await handle_message(websocket, message)
-    except websockets.ConnectionClosed:
+
+    except websockets.ConnectionClosedOK:
+        pass
+    except websockets.ConnectionClosedError:
         pass
     finally:
-        # Unregister happens when the socket closes
-        await unregister(temp_user_id) 
+        # Clean up on disconnect
+        client_ip = websocket.remote_address[0]
+        player_id = await get_player_by_ip(client_ip)
+
+        if player_id is not None:
+            await unregister(player_id)
+
 
 async def checkCard(value, color, operator, player_id):
 
@@ -438,14 +449,12 @@ async def checkCard(value, color, operator, player_id):
 def get_next_player(current_id):
     ids = sorted(playerPool.keys())
     idx = ids.index(current_id)
-    logging.info("Index:" + str(idx))
     return ids[(idx + 1) % len(ids)]
 
 async def send_status_to_player(player_id: int, message: str):
     if player_id in USERS:
         ws = USERS[player_id]
         client_ip, client_port = ws.remote_address
-        logging.info("IP:" + client_ip)
         await send_message(ws, "STATUS", {"message": message})
 
 
