@@ -250,7 +250,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 card_value = payload.get("value")
                 card_color = payload.get("color")
                 card_operator = payload.get("operator")
-                user_id = payload.get("user_id")
+                user_id = int(payload.get("user_id"))
 
             logging.info("Checking card")
             event, card1, card2 = await checkCard(card_value, card_color, card_operator, user_id)
@@ -282,10 +282,10 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
             elif event == "NEXT":
                 # 1. Notify current player that their turn is over
-                await send_status_to_player(player_id, "Your turn has ended.")
+                await send_status_to_player(user_id, "Your turn has ended.")
 
                 # 2. Determine next player
-                next_player = get_next_player(player_id)
+                next_player = get_next_player(user_id)
                 # 3. Update turn tracker
                 currentTurnPlayerID = next_player
 
@@ -438,7 +438,7 @@ async def checkCard(value, color, operator, player_id):
 def get_next_player(current_id):
     ids = sorted(playerPool.keys())
     idx = ids.index(current_id)
-
+    logging.info("Index:" + idx)
     return ids[(idx + 1) % len(ids)]
 
 async def send_status_to_player(player_id: int, message: str):
