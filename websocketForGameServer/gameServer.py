@@ -438,12 +438,14 @@ async def checkCard(value, color, operator, player_id):
 def get_next_player(current_id):
     ids = sorted(playerPool.keys())
     idx = ids.index(current_id)
-    logging.info("Index:" + idx)
+    logging.info("Index:" + str(idx))
     return ids[(idx + 1) % len(ids)]
 
 async def send_status_to_player(player_id: int, message: str):
-    if str(player_id) in USERS:
-        ws = USERS[str(player_id)]
+    if player_id in USERS:
+        ws = USERS[player_id]
+        client_ip, client_port = ws.remote_address
+        logging.info("IP:" + client_ip)
         await send_message(ws, "STATUS", {"message": message})
 
 
