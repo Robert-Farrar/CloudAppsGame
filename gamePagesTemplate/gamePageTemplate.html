@@ -230,39 +230,23 @@ function connectWebSocket() {
     ws.addEventListener("open", () => {
         console.log("WS connected on game page.");
         // Request user + game data
-        ws.send(JSON.stringify({ type: "REQUEST_DATA", payload: { user_id: "0", game_id: "0" } }));
+        userId = sessionStorage.getItem('user_id');
+        gameId = 1
+        flipCardEl.style.pointerEvents = 'auto';
+        if (!userId) {
+        console.warn("User ID not found in sessionStorage, setting default value to '0'.");
+        userId = "0";  // Default or fallback value
+    }
+
     });
 
     ws.addEventListener("message", (event) => {
         const msg = JSON.parse(event.data);
         console.log("WS MESSAGE:", msg);
 
-        // Handle REQUEST_DATA response
-        if (msg.type === "REQUEST_DATA") {
-            if (msg.data?.status === "ok") {
-                userId = String(msg.data.user_id);
-                gameId = String(msg.data.game_id);
-                console.log("Player data received:", userId, gameId);
-
-                // Enable flip card now
-                flipCardEl.style.pointerEvents = 'auto';
-
-                // Now we can safely send RECONNECT
-                ws.send(JSON.stringify({
-                    type: "RECONNECT",
-                    payload: {
-                        msg: "Player rejoined game",
-                        user_id: String(userId),
-                        game_id: gameId
-                    }
-                }));
-            } else {
-                console.warn("Could not get player data:", msg.data?.message);
-            }
-        }
 
         if (msg.type === "TURN" || (msg.type === "STATUS" && msg.data?.message?.includes("It is now your turn."))) {
-                console.log("You Turn")
+                console.log("Your Turn")
                 enableCardDraw()
             }
 

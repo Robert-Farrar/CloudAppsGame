@@ -24,29 +24,6 @@ services:
       dockerfile: Dockerfile
     expose:
       - "8000"
-    environment:
-      DB_HOST: "db"
-      DB_USER: "cloud"
-      DB_PASSWORD: "ThisIsThePassword1!"
-      DB_NAME: "cloudgame" 
-      DATABASE_URL: "mysql://cloud:ThisIsThePassword1!@db:3306/cloudgame"
-    depends_on:
-      - db
-    restart: always
-    networks:
-      - appnet
-      
-  # Database 
-  db:
-    container_name: database
-    build:
-      context: ./Database
-      dockerfile: Dockerfile
-    volumes:
-      - dbdata:/var/lib/mysql
-      - ./Database/db.sql:/docker-entrypoint-initdb.d/db.sql
-    ports:
-      - "3307:3306"
     restart: always
     networks:
       - appnet

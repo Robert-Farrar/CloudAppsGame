@@ -174,17 +174,18 @@
         ws.addEventListener('open', () => {
           console.log("WebSocket connection opened.");
           // Send CONNECT message after connection is opened
-          ws.send(JSON.stringify({ type: "CONNECT", payload: {username: username, user_id: "0", game_id: "0" }}));
+          ws.send(JSON.stringify({ type: "CONNECT", payload: {username: username, user_id: 0, game_id: 0 }}));
         });
 
         ws.addEventListener('message', (event) => {
           const message = JSON.parse(event.data);
           console.log("Received message:", message);
 
-          // Handle server responses based on message type
-          if (message.type === 'STATUS') {
-            showMessage(message.data.message, 'success');
-             window.location.href = '/game';
+           if (message.type === 'CONNECTED') {
+            const { user_id } = message.data;
+            sessionStorage.setItem('user_id', user_id); // Store user_id in sessionStorage
+            showMessage('Connection successful, redirecting to game...', 'success');
+            window.location.href = '/game'; // Redirect to the game page
           } else if (message.type === 'ERROR') {
             showMessage(message.data.message, 'error');
           }
