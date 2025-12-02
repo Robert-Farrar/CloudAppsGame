@@ -57,7 +57,9 @@ async def register(websocket: ServerProtocol, user_id: str, username: str):
     """Handles new user registration and connection based on user_id."""
     global playerID, playerPool, numPlayers
 
-    if user_id == 0:
+    userID = int(user_id)
+
+    if userID == 0:
         playerID += 1
         user_id = playerID
     logging.info(f"Registering user {username} with user_id={user_id}")
