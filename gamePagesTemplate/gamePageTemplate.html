@@ -212,9 +212,11 @@
 let ws = null;
 let reconnectTimeout = null;
 
+
 let popupInstance = null;
 let userId = null;
 let gameId = 1;  // You hardcoded 1 — keeping that
+let username = "";
 let pendingBattle = null;
 
 const flipCardEl = document.getElementById("mainFlipCard");
@@ -223,7 +225,7 @@ flipCardEl.style.pointerEvents = "none";
 window.addEventListener("DOMContentLoaded", () => {
     console.log("DOM loaded → Initializing popup + websocket");
     userId = sessionStorage.getItem('user_id');
-
+    username = sessionStorage.getItem('username')
     popupInstance = new Popup(document.getElementById("popup_box"));
     connectWebSocket();
 
@@ -241,13 +243,13 @@ function connectWebSocket() {
 
     ws.onopen = () => {
         console.log("WebSocket connected.");
-
+        console.log("User ID: " + userId)
         // Send RECONNECT or CONNECT depending on your protocol
         ws.send(JSON.stringify({
-            type: "RECONNECT",
+            type: "CONNECT",
             payload: {
                 user_id: userId,
-                username: ""
+                username: username
             }
         }));
 

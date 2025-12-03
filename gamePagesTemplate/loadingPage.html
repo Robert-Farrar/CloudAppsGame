@@ -52,7 +52,7 @@ function connectWebSocket() {
         console.log("RECONNECT message sent.");
     };
 
-    ws.addEventListener("close", () => {
+    ws.addEventListener("close", (event) => {
         console.warn(`WS closed with code: ${event.code}, reason: ${event.reason}`);
         if (event.code !== 1000) {
         console.warn("Reconnecting in 1.5s...");

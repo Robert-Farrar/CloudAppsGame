@@ -97,6 +97,7 @@ async def unregister(user_id: int):
         del USERS[user_id]
     if user_id in playerPool:
         # del playerPool[user_id]
+        pass
     
     logging.info(f"User {user_id} disconnected. Total users: {len(USERS)}")
 
@@ -148,6 +149,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 user_id = int(payload.get("user_id"))
 
                 logging.info("Checking card")
+                send_message(USERS[user_id], "STATUS", {"message": f"This is a test message"})
                 event, card1, card2 = await checkCard(card_value, card_color, card_operator, user_id)
                 logging.info(event)
 
@@ -293,7 +295,7 @@ async def game_handler(websocket: ServerProtocol):
             if user_id in USERS:
                 # If the user_id already exists, handle reconnect logic
                 logging.info(f"Reconnecting existing user {user_id}")
-                await unregister(user_id)  # Clean up old connection
+                #await unregister(user_id)  # Clean up old connection
 
                 # Register the new user (or reconnecting)
                 await register(websocket, user_id, username)
