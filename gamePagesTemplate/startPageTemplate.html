@@ -139,6 +139,7 @@
   </main>
 
   <script>
+
     (function () {
       const form = document.getElementById('usernameForm');
       const input = document.getElementById('username');
@@ -185,7 +186,9 @@
             const { user_id } = message.data;
             sessionStorage.setItem('user_id', user_id); // Store user_id in sessionStorage
             showMessage('Connection successful, redirecting to game...', 'success');
-            window.location.href = '/game'; // Redirect to the game page
+            setTimeout(() => {
+                window.location.href = '/start';
+          }, 50);
           } else if (message.type === 'ERROR') {
             showMessage(message.data.message, 'error');
           }
@@ -235,6 +238,9 @@
 
       // Focus input on load for convenience
       window.addEventListener('DOMContentLoaded', () => { if (input) input.focus(); });
+      window.addEventListener("beforeunload", () => {
+      sessionStorage.setItem("user_id", user_id);
+      });
     })();
   </script>
 </body>

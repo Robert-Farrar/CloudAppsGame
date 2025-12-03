@@ -15,6 +15,8 @@ numPlayers = 0
 username = ""
 currentTurnPlayerID = 0
 USERS = {}
+game_timer_started = False
+game_timer_task = None
 
 CURRENT_BATTLE = {
     "active": False,
@@ -54,6 +56,7 @@ async def broadcast_game_state(game_id: str, state: Dict):
 
 # FIX 1: Use WebSocketServerProtocol for type hinting
 async def register(websocket: ServerProtocol, user_id: str, username: str):
+    global game_timer_started
     """Handles new user registration and connection based on user_id."""
     global playerID, playerPool, numPlayers
 
@@ -73,6 +76,11 @@ async def register(websocket: ServerProtocol, user_id: str, username: str):
         "points": 0,
         "card": {},  # Card data for the player
     }
+
+    if len(USERS) == 4 and not game_timer_started:
+        game_timer_started = True
+        game_timer_task = asyncio.create_task(start_game_timer())
+        logging.info("4 players connected — game countdown triggered.")
 
     logging.info(f"User {username} with user_id={user_id} connected. Total users: {len(USERS)}")
 
@@ -327,6 +335,21 @@ async def send_status_to_player(player_id: int, message: str):
         ws = USERS[player_id]
         await send_message(ws, "STATUS", {"message": message})
 
+async def start_game_timer():
+    global game_timer_started
+    logging.info("Countdown started (120 seconds).")
+    
+    await asyncio.sleep(15)
+
+    # Broadcast START to all players
+    message = {
+        "type": "START",
+        "data": {}
+    }
+
+    for ws in USERS.values():
+        await send_message(ws, "START", {})
+    logging.info("Game START message sent to all players.")
 
 
 async def main():
