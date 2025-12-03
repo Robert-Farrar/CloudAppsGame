@@ -11,7 +11,87 @@
 <body>
     <div id="loading-screen" style="display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f0f0;">
         <h1>Loading game, please wait...</h1>
-        <img id="loadingAni" src="images/loading.gif" style="width: 149px; height: 34px;">
     </div>
 
+
+
+
+<script>
+
+let userId = null
+
+
+window.addEventListener("DOMContentLoaded", () => {
+    userId = sessionStorage.getItem('user_id');
+    console.log("User ID from sessionStorage:", userId);
+
+    if (!userId) {
+        console.error("user_id is missing!");
+    } else {
+        console.log("user_id successfully retrieved.");
+    }
+});
+
+function connectWebSocket() {
+    console.log("Connecting websocket...");
+    const ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+    ws.onopen = () => {
+        console.log("WebSocket connected.");
+
+        // Send RECONNECT or CONNECT depending on your protocol
+        ws.send(JSON.stringify({
+            type: "RECONNECT",
+            payload: {
+                user_id: userId,
+                username: ""
+            }
+        }));
+
+        console.log("RECONNECT message sent.");
+    };
+
+    ws.addEventListener("close", () => {
+        console.warn(`WS closed with code: ${event.code}, reason: ${event.reason}`);
+        if (event.code !== 1000) {
+        console.warn("Reconnecting in 1.5s...");
+        reconnectTimeout = setTimeout(connectWebSocket, 1500);
+    }
+    });
+
+    ws.addEventListener("message", (event) => {
+    try {
+        const msg = JSON.parse(event.data);
+        console.log("WS MESSAGE:", msg);
+
+        // Handle START message
+        if (msg.type === "START") {
+            console.log("Game is starting!");
+            console.log("Load successful, redirecting to game...", "success");
+            window.location.href = "/game"; // Redirect to the game page
+            return; // Exit early
+        }
+
+        // Handle ERROR messages
+        if (msg.type === "ERROR") {
+            showMessage(msg.data?.message || "Unknown error", "error");
+            return;
+        }
+
+        // Handle unknown message types
+        console.warn(`Unknown message type: ${msg.type}`, msg);
+
+    } catch (error) {
+        console.error("Error processing message:", error);
+    }
+});
+}
+
+
+
+
+window.addEventListener("DOMContentLoaded", connectWebSocket);
+
+</script>
+</body>
 </html>
