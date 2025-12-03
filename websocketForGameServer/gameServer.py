@@ -3,6 +3,8 @@ import websockets
 import json
 import logging
 from websockets.server import ServerProtocol
+# Import ConnectionClosed for robust error handling during send operations
+from websockets.exceptions import ConnectionClosed
 from typing import Dict, Any, Optional, List
 from Card import Card
 import traceback
@@ -30,19 +32,22 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 
 # --- WebSocket & Broadcast Logic ---
-# FIX 1: Use ServerProtocol for type hinting
 async def send_message(websocket: ServerProtocol, type: str, data: Dict):
-    """Utility function to send structured JSON message."""
+    """Utility function to send structured JSON message, handling closed connections gracefully."""
     message = json.dumps({"type": type, "data": data})
-    await websocket.send(message)
+    try:
+        await websocket.send(message)
+    except ConnectionClosed:
+        # Log a warning if the connection is already closed when trying to send
+        logging.warning(f"Connection closed while attempting to send message.")
+    except Exception as e:
+        # Catch other potential connection-related send errors
+        logging.error(f"Unexpected error while sending message: {e}")
+
 
 # NEW FUNCTION: Broadcast game state to all connected users
 async def broadcast_game_state(game_id: str, state: Dict):
-    """
-    Sends the state update to all registered users.
-    NOTE: In a real game, this should only send to users belonging to the specific game_id.
-    """
-    # For this conceptual implementation, we broadcast to ALL registered users.
+    
     websockets_to_send = list(USERS.values())
     if not websockets_to_send:
         logging.info("No connected users to broadcast to.")
@@ -54,7 +59,7 @@ async def broadcast_game_state(game_id: str, state: Dict):
     messages = [send_message(ws, "STATE_UPDATE", state) for ws in websockets_to_send]
     await asyncio.gather(*messages, return_exceptions=True)
 
-# FIX 1: Use WebSocketServerProtocol for type hinting
+
 async def register(websocket: ServerProtocol, user_id: str, username: str):
     global game_timer_started
     """Handles new user registration and connection based on user_id."""
@@ -96,7 +101,6 @@ async def unregister(user_id: str):
     
     logging.info(f"User {user_id} disconnected. Total users: {len(USERS)}")
 
-# FIX 1: Use WebSocketServerProtocol for type hinting
 async def handle_message(websocket: ServerProtocol, message: str):
     """Parses incoming message and executes game logic."""
     try:
@@ -134,7 +138,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
             card_value = None 
             card_color = None 
             card_operator = None 
-            user_id = None
+            
             if currentTurnPlayerID == 0:
                 currentTurnPlayerID = 1
 
@@ -144,50 +148,67 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 card_operator = payload.get("operator")
                 user_id = int(payload.get("user_id"))
 
-            logging.info("Checking card")
-            event, card1, card2 = await checkCard(card_value, card_color, card_operator, user_id)
-            logging.info(event)
-            if event == "BATTLE":
-                battle_state = {
-                    "type": "BATTLE",
-                    "card1_value": card1.value,
-                    "card1_operator": card1.operator,
-                    "card2_value": card2.value,
-                    "card2_operator": card2.operator
-                }
+                logging.info("Checking card")
+                event, card1, card2 = await checkCard(card_value, card_color, card_operator, user_id)
+                logging.info(event)
 
-                CURRENT_BATTLE["active"] = True
-                CURRENT_BATTLE["winner"] = None
-                CURRENT_BATTLE["answer"] = None
-                CURRENT_BATTLE["players_answered"].clear()
-                if card1_operator == '+':
-                    CURRENT_BATTLE["answer"] = card1.value + card2.value
-                elif card1_operator == '-':
-                    CURRENT_BATTLE["answer"] = card1.value - card2.value
-                elif card1_operator == '*':
-                    CURRENT_BATTLE["answer"] = card1.value * card2.value
-                elif card1_operator == '/':
-                    CURRENT_BATTLE["answer"] = card1.value - card2.value
+                if event == "BATTLE":
+                    battle_state = {
+                        "type": "BATTLE",
+                        "card1_value": card1.value,
+                        "card1_operator": card1.operator,
+                        "card2_value": card2.value,
+                        "card2_operator": card2.operator
+                    }
 
-                # BROADCAST TO ALL PLAYERS
-                await broadcast_game_state(game_id, battle_state)
+                    CURRENT_BATTLE["active"] = True
+                    CURRENT_BATTLE["winner"] = None
+                    CURRENT_BATTLE["answer"] = None
+                    CURRENT_BATTLE["players_answered"].clear()
 
-            elif event == "NEXT":
-                # 1. Notify current player that their turn is over
-                await send_status_to_player(user_id, "Your turn has ended.")
+                    # Calculate the correct answer based on the operators
+                    val1 = card1.value
+                    val2 = card2.value
+                    op = card1.operator
 
-                # 2. Determine next player
-                next_player = get_next_player(user_id)
-                # 3. Update turn tracker
-                currentTurnPlayerID = next_player
+                    if op == '+':
+                        CURRENT_BATTLE["answer"] = val1 + val2
+                    elif op == '-':
+                        CURRENT_BATTLE["answer"] = val1 - val2
+                    elif op == '*':
+                        CURRENT_BATTLE["answer"] = val1 * val2
+                    elif op == '/':
+                        if val2 != 0:
+                            CURRENT_BATTLE["answer"] = val1 / val2
+                        else:
+                             CURRENT_BATTLE["answer"] = 0 # Handle div by zero gracefully
 
-                logging.info("Next Player ID: " + str(next_player))
+                    logging.info(f"BATTLE STARTED. Answer is: {CURRENT_BATTLE['answer']}")
 
-                # 4. Notify next player
-                await send_status_to_player(next_player, "It is now your turn.")
+                    # BROADCAST TO ALL PLAYERS
+                    await send_message_to_all({
+                        "type": "BATTLE",
+                        "data": battle_state
+                    })
+                    # stops preccessing message whence a battle is started
+                    return
+                
+                elif event == "NEXT":
+                    # 1. Notify current player that their turn is over
+                    await send_status_to_player(user_id, "Your turn has ended.")
 
-            return  # Stop further processing
-        
+                    # 2. Determine next player
+                    next_player = get_next_player(user_id)
+                    # 3. Update turn tracker
+                    currentTurnPlayerID = next_player
+
+                    logging.info("Next Player ID: " + str(next_player))
+
+                    # 4. Notify next player
+                    await send_status_to_player(next_player, "It is now your turn.")
+            else:
+                return await send_message(websocket, "STATUS", {"message": f"Not your turn. Current player: {currentTurnPlayerID}"})
+
         elif msg_type == "ANSWER":
             if not CURRENT_BATTLE["active"]:
                 return await send_message(websocket, "STATUS", {"message": "No active battle."})
@@ -205,8 +226,14 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 })
 
             user_answer = payload.get("answer")
+            logging.info(f"Player {user_id} guessed: {user_answer}. Correct is: {CURRENT_BATTLE['answer']}")
 
-            if user_answer == CURRENT_BATTLE["answer"]:
+            is_correct = False
+            if user_answer is not None:
+                if abs(float(user_answer) - float(CURRENT_BATTLE["answer"])) < 0.01:
+                    is_correct = True
+
+            if is_correct:
                 if CURRENT_BATTLE["winner"] is None:
                     CURRENT_BATTLE["winner"] = user_id
                     CURRENT_BATTLE["active"] = False  # battle ends
@@ -220,30 +247,34 @@ async def handle_message(websocket: ServerProtocol, message: str):
                     "correct_answer": CURRENT_BATTLE["answer"],
                     "points": playerPool[user_id]["points"]
                 }
+                
+                # broadcast to all players here
+                await broadcast_game_state(game_id, result_state)
 
-            # 1. Notify current player that their turn is over
-            await send_status_to_player(user_id, "Your turn has ended.")
 
-            # 2. Determine next player
-            next_player = get_next_player(user_id)
-
-            # 3. Update turn tracker
-            currentTurnPlayerID = next_player
-            logging.info("Current Turn Player ID: " + str(currentTurnPlayerID))
-            # 4. Notify next player
-            await send_status_to_player(next_player, "It is now your turn.")
+                # Move turn logic
+                next_player = get_next_player(user_id)
+                currentTurnPlayerID = next_player
+                await send_status_to_player(next_player, "It is now your turn.")
 
             return  # Stop further processing
-
-                
-
 
     except json.JSONDecodeError:
         await send_message(websocket, "ERROR", {"message": "Invalid JSON format."})
     except Exception as e:
+        # Note: The ConnectionClosed exception is now handled inside send_message
         traceback.print_exc()
         logging.error(f"Error handling message: {e}")
-        await send_message(websocket, "ERROR", {"message": "Server error."})
+        if websocket and not websocket.closed:
+            await send_message(websocket, "ERROR", {"message": "Server error."})
+        
+# Helper to broadcast raw dict to all
+async def send_message_to_all(data: Dict):
+    message = json.dumps(data)
+    websockets_to_send = list(USERS.values())
+    if websockets_to_send:
+        # Create tasks for all sends
+        await asyncio.gather(*[ws.send(message) for ws in websockets_to_send], return_exceptions=True)
 
 
 async def game_handler(websocket: ServerProtocol):
@@ -309,11 +340,13 @@ async def checkCard(value, color, operator, player_id):
         if value == other.get("value") and color == other.get("color"):
             # BATTLE detected!
 
-            card1 = Card.Card()
+            # FIX: Change Card.Card() to Card() because the class was imported directly
+            card1 = Card() 
             card1.value = value
             card1.operator = operator
 
-            card2 = Card.Card()
+            # FIX: Change Card.Card() to Card()
+            card2 = Card()
             card2.value = other.get("value")
             card2.operator = other.get("operator")
 
@@ -325,6 +358,10 @@ async def checkCard(value, color, operator, player_id):
 
 def get_next_player(current_id):
     ids = sorted(playerPool.keys())
+    # Safely handle the case where the player pool is empty or current_id is missing
+    if not ids or current_id not in ids:
+        return 0 # Return a default/safe ID or handle error appropriately
+        
     idx = ids.index(current_id)
     return ids[(idx + 1) % len(ids)]
 
