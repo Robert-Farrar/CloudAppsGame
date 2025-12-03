@@ -376,7 +376,7 @@ async def start_game_timer():
     global game_timer_started
     logging.info("Countdown started (120 seconds).")
     
-    await asyncio.sleep(60)
+    await asyncio.sleep(15)
 
     # Broadcast START to all players
     message = {
