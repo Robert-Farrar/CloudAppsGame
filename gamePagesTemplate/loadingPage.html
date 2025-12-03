@@ -10,7 +10,7 @@
 </head>
 <body>
     <div id="loading-screen" style="display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f0f0;">
-        <h1>Loading game, please wait...</h1>
+        <h1>Waiting for players, please wait...</h1>
         <img id="loadingAni" src="images/loading.gif" style="width: 149px; height: 34px;">
     </div>
 
@@ -19,10 +19,11 @@
   <script>
 
 let userId = null
-
+let username = null;
 
 window.addEventListener("DOMContentLoaded", () => {
     userId = sessionStorage.getItem('user_id');
+    username = sessionStorage.getItem('username')
     console.log("User ID from sessionStorage:", userId);
 
     if (!userId) {

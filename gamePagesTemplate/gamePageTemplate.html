@@ -222,6 +222,7 @@ flipCardEl.style.pointerEvents = "none";
 
 window.addEventListener("DOMContentLoaded", () => {
     console.log("DOM loaded → Initializing popup + websocket");
+    userId = sessionStorage.getItem('user_id');
 
     popupInstance = new Popup(document.getElementById("popup_box"));
     connectWebSocket();
@@ -238,17 +239,22 @@ function connectWebSocket() {
     console.log("Connecting WebSocket...");
     ws = new WebSocket(`ws://${window.location.host}/ws`);
 
-    ws.addEventListener("open", () => {
-        console.log("WS connected on game page.");
+    ws.onopen = () => {
+        console.log("WebSocket connected.");
 
-        userId = sessionStorage.getItem("user_id");
-        if (!userId) {
-            console.warn("Missing user_id in sessionStorage → using fallback '0'");
-            userId = "0";
-        }
+        // Send RECONNECT or CONNECT depending on your protocol
+        ws.send(JSON.stringify({
+            type: "RECONNECT",
+            payload: {
+                user_id: userId,
+                username: ""
+            }
+        }));
 
-        flipCardEl.style.pointerEvents = "auto";
-    });
+        console.log("RECONNECT message sent.");
+
+         flipCardEl.style.pointerEvents = 'auto';
+    };
 
     ws.addEventListener("message", (event) => {
         const msg = JSON.parse(event.data);

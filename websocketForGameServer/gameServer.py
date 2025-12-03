@@ -60,14 +60,13 @@ async def broadcast_game_state(game_id: str, state: Dict):
     await asyncio.gather(*messages, return_exceptions=True)
 
 
-async def register(websocket: ServerProtocol, user_id: str, username: str):
+async def register(websocket: ServerProtocol, user_id: int, username: str):
     global game_timer_started
     """Handles new user registration and connection based on user_id."""
     global playerID, playerPool, numPlayers
 
-    userID = int(user_id)
 
-    if userID == 0:
+    if user_id == 0:
         playerID += 1
         user_id = playerID
     logging.info(f"Registering user {username} with user_id={user_id}")
@@ -92,12 +91,12 @@ async def register(websocket: ServerProtocol, user_id: str, username: str):
     return user_id
 
 
-async def unregister(user_id: str):
+async def unregister(user_id: int):
     """Unregister user by user_id."""
     if user_id in USERS:
         del USERS[user_id]
     if user_id in playerPool:
-        del playerPool[user_id]
+        # del playerPool[user_id]
     
     logging.info(f"User {user_id} disconnected. Total users: {len(USERS)}")
 
@@ -117,7 +116,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
         if msg_type == "CONNECT":
             username = payload.get("username")
-            user_id = await register(websocket, user_id_str, username)
+            user_id = await register(websocket, user_id, username)
             initial_game_id = "1"
             
             USERS[user_id] = websocket
@@ -265,7 +264,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
         # Note: The ConnectionClosed exception is now handled inside send_message
         traceback.print_exc()
         logging.error(f"Error handling message: {e}")
-        if websocket and not websocket.closed:
+        if websocket:
             await send_message(websocket, "ERROR", {"message": "Server error."})
         
 # Helper to broadcast raw dict to all
@@ -276,7 +275,7 @@ async def send_message_to_all(data: Dict):
         # Create tasks for all sends
         await asyncio.gather(*[ws.send(message) for ws in websockets_to_send], return_exceptions=True)
 
-
+#####GAME HANDLER#####
 async def game_handler(websocket: ServerProtocol):
     """Main entry point for new WebSocket connections."""
     global USERS
@@ -287,13 +286,9 @@ async def game_handler(websocket: ServerProtocol):
             data = json.loads(message)
             payload = data.get("payload")
 
-            user_id_str = payload.get("user_id")
-
-            logging.info(user_id_str)
+            user_id = int(payload.get("user_id"))
 
             username = payload.get("username")
-            
-            user_id = int(user_id_str)
 
             if user_id in USERS:
                 # If the user_id already exists, handle reconnect logic
@@ -317,9 +312,10 @@ async def game_handler(websocket: ServerProtocol):
 
 
 async def checkCard(value, color, operator, player_id):
+    global playerPool
 
-    logging.info("Player ID: " + str(player_id))
-
+    logging.info(f"PLAYER POOL KEYS: {list(playerPool.keys())}")
+    logging.info(f"CHECKCARD CALLED WITH: {player_id} (type={type(player_id)})")
     # 1. Store the card for this player
     playerPool[player_id]["card"] = {
         "value": value,
