@@ -178,7 +178,10 @@ async def handle_message(websocket: ServerProtocol, message: str):
                     logging.info(f"BATTLE STARTED. Answer is: {CURRENT_BATTLE['answer']}")
 
                     # BROADCAST TO ALL PLAYERS
-                    await broadcast_game_state(game_id, battle_state)
+                    await send_message_to_all({
+                        "type": "BATTLE",
+                        "data": battle_state
+                    })
                     # stops preccessing message whence a battle is started
                     return
                 
