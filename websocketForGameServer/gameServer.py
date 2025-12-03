@@ -316,8 +316,7 @@ async def game_handler(websocket: ServerProtocol):
 async def checkCard(value, color, operator, player_id):
     global playerPool
 
-    logging.info(f"PLAYER POOL KEYS: {list(playerPool.keys())}")
-    logging.info(f"CHECKCARD CALLED WITH: {player_id} (type={type(player_id)})")
+  
     # 1. Store the card for this player
     playerPool[player_id]["card"] = {
         "value": value,
@@ -335,7 +334,7 @@ async def checkCard(value, color, operator, player_id):
         if not other:
             continue
 
-        if value == other.get("value") and color == other.get("color"):
+        if operator == other.get("operator") and color == other.get("color"):
             # BATTLE detected!
 
             # FIX: Change Card.Card() to Card() because the class was imported directly
