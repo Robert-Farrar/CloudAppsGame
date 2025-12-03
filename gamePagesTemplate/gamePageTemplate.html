@@ -198,8 +198,10 @@
         <a id="popupBoxClose"><span id="countDown"></span></a>  
         <form action="" method="post">
             <div id="questionAnswer">
-                <label for="question" style="font-size: xxx-large;"><b><!-- Question goes here --> 7 + 3 = </b></label>
-                <input type="answer" placeholder="  ?" style="font-size: xxx-large; width: 100px; margin-left: 10px;" name="ans" required>
+                <label for="question" style="font-size: xxx-large;">
+                    <b id="battleQuestion"><!-- Question goes here --> 7 + 3 = </b>
+                </label>
+                <input type="answer" id="answerInput" placeholder=" ?" style="font-size: xxx-large; width: 100px; margin-left: 10px;" name="ans" required>
             </div>
             <button type="submit" id="btnAnswer" onclick="closeform()"></button> 
         </form> 
@@ -253,8 +255,9 @@ function connectWebSocket() {
 
         // Handle BATTLE messages
         if (msg.type === "BATTLE" && popupInstance) {
+            console.log("Battle detected via WS! Triggering popup.");
             // Pass card data to the popup for display if needed
-            popupInstance.load(msg);
+            popupInstance.load(msg.data);
         }
 
         // Handle other messages (CARD, RESULT, etc.)
@@ -361,10 +364,21 @@ function Popup(popup) {
     this.timer = null;
     this.counter = 10;
     this.countDownEl = this.popup.querySelector('#countDown');
+    // added a reference for text update 
+    this.battleQuestionEl = document.getElementById('battleQuestion');
     this._outsideHandler = null;
     this._closeHandler = null;
 
     this.load = (battleData) => {
+        // read data to form equation
+        console.log("Popup loading data:", battleData);
+        if (this.battleQuestionEl) {
+             const op = battleData.card1_operator;
+             const v1 = battleData.card1_value;
+             const v2 = battleData.card2_value;
+             this.battleQuestionEl.textContent = `${v1} ${op} ${v2} = `;
+        }
+
         this.counter = 7;
         if (this.countDownEl) this.countDownEl.textContent = String(this.counter);
 
