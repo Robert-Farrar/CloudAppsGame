@@ -11,7 +11,7 @@ const cards = [
 [9,"images/cards/RedPlusEight.png",'+',"red",8],
 [10,"images/cards/RedPlusNine.png",'+',"red",9],
 [11,"images/cards/BluePlusZero.png",'+',"blue",0],
-[12,"images/cards/BluePlusPlusOne.png",'+',"blue",1],
+[12,"images/cards/BluePlusOne.png",'+',"blue",1],
 [13,"images/cards/BluePlusTwo.png",'+',"blue",2],
 [14,"images/cards/BluePlusThree.png",'+',"blue",3],
 [15,"images/cards/BluePlusFour.png",'+',"blue",4],

@@ -448,10 +448,14 @@ function Popup(popup) {
         form.onsubmit = (e) => {
             e.preventDefault();
 
-            const answer = form.querySelector("input[name='ans']").value;
-            if (!answer) return;
+            let answer = form.querySelector("input[name='ans']").value;
+            if (!answer) {
+                answer = -999;
+            } else {
+                answer = parseFloat(answer);
+            }
 
-            if (ws.readyState === WebSocket.OPEN) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(
                     JSON.stringify({
                         type: "ANSWER",
@@ -463,6 +467,8 @@ function Popup(popup) {
                     })
                 );
                 console.log("ANSWER SENT:", answer);
+            } else {
+                console.error("WebSocket not ready. State:", ws ? ws.readyState : "ws is null");
             }
 
             this.unload();
@@ -471,8 +477,32 @@ function Popup(popup) {
         // Countdown
         this.timer = setInterval(() => {
             this.counter--;
-            if (this.counter < 0) this.unload();
-            else this.countDownEl.textContent = this.counter;
+            if (this.counter < 0) {
+                // Auto-submit on timeout - manually trigger the answer submission
+                let answer = form.querySelector("input[name='ans']").value;
+                if (!answer) {
+                    answer = -999;
+                } else {
+                    answer = parseFloat(answer);
+                }
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(
+                        JSON.stringify({
+                            type: "ANSWER",
+                            payload: {
+                                answer,
+                                user_id: userId,
+                                game_id: gameId,
+                            },
+                        })
+                    );
+                    console.log("ANSWER SENT (timeout):", answer);
+                }
+                this.unload();
+            } else {
+                this.countDownEl.textContent = this.counter;
+            }
         }, 1000);
     };
 
@@ -484,6 +514,7 @@ function Popup(popup) {
     };
 
     this.showWrong = () => {
+        console.log("Showing wrong message");
         this.wrongMsgEl.style.display = "block";
         setTimeout(() => {
             this.wrongMsgEl.style.display = "none";
@@ -494,6 +525,11 @@ function Popup(popup) {
         popup.style.display = "none";
         clearInterval(this.timer);
         this.timer = null;
+        // Clear the input field for the next battle
+        const form = popup.querySelector("form");
+        if (form) {
+            form.querySelector("input[name='ans']").value = "";
+        }
     };
 }
 </script>
