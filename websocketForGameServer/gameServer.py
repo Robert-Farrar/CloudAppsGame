@@ -232,7 +232,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
             is_correct = False
             if user_answer is not None:
-                if abs(float(user_answer) - float(CURRENT_BATTLE["answer"])) < 0.01:
+                if round(float(user_answer), 2) == round(float(CURRENT_BATTLE["answer"]), 2):
                     is_correct = True
 
             if is_correct:
@@ -251,7 +251,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 }
                 
                 # broadcast to all players here
-                if playerPool[user_id].get("points", 0) < 1:
+                if playerPool[user_id].get("points", 0) < 3:
                     await broadcast_game_state(game_id, result_state)
                 else:
                     global leaderboard
