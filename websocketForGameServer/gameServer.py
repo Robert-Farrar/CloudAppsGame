@@ -1,13 +1,16 @@
 import asyncio
-import websockets
 import json
 import logging
-from websockets.server import ServerProtocol
-# Import ConnectionClosed for robust error handling during send operations
-from websockets.exceptions import ConnectionClosed
-from typing import Dict, Any, Optional, List
-from Card import Card
+import os
+import socket
 import traceback
+import urllib.request
+from typing import Dict, Any, Optional, List
+
+import websockets
+from websockets.exceptions import ConnectionClosed
+from websockets.server import ServerProtocol
+from Card import Card
 
 # --- Configuration & Initialization ---
 
@@ -29,6 +32,40 @@ CURRENT_BATTLE = {
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+DEFAULT_WORKER_CAPACITY = 5
+
+
+def register_with_router():
+    """
+    Registers this worker with the router so it can be assigned games.
+    Skips registration when ROUTER_URL is not provided (backwards compatible).
+    """
+    router_url = os.getenv("ROUTER_URL")
+    if not router_url:
+        logging.info("ROUTER_URL not set; skipping router registration.")
+        return
+
+    worker_id = os.getenv("WORKER_ID") or socket.gethostname()
+    worker_host = os.getenv("WORKER_HOST", worker_id)
+    worker_port = int(os.getenv("WORKER_PORT", os.getenv("PORT", "8000")))
+    capacity = int(os.getenv("WORKER_CAPACITY", str(DEFAULT_WORKER_CAPACITY)))
+
+    payload = {
+        "worker_id": worker_id,
+        "host": worker_host,
+        "port": worker_port,
+        "capacity": capacity,
+    }
+
+    url = f"{router_url.rstrip('/')}/workers/register"
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            logging.info("Registered worker %s with router (%s): %s", worker_id, url, response.status)
+    except Exception as exc:
+        logging.warning("Could not register worker %s with router at %s: %s", worker_id, url, exc)
 
 
 # --- WebSocket & Broadcast Logic ---
@@ -387,7 +424,7 @@ async def start_game_timer():
 
 
 async def main():
-    
+    await asyncio.to_thread(register_with_router)
     async with websockets.serve(game_handler, "0.0.0.0", 8000):
         await asyncio.Future() 
 

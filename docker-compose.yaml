@@ -11,22 +11,66 @@ services:
       - "81:80"             
     # For now read only volume, this will have to change for when we get https so certbot can update expired certs  
     depends_on:
+      - game_router
       - game_server                  
     restart: always
     networks:
       - appnet
 
+  game_router:
+    build:
+      context: ./websocketForGameServer
+      dockerfile: Dockerfile
+    command: ["python", "game_router.py"]
+    ports:
+      - "7000:7000"
+    restart: always
+    networks:
+      - appnet
+    labels:
+      com.cloudappsgame.role: router
+
   # Web / Application Server
   game_server:
-    container_name: game_server
     build:
       context: ./websocketForGameServer
       dockerfile: Dockerfile
     expose:
       - "8000"
+    environment:
+      - ROUTER_URL=http://game_router:7000
+      - WORKER_PORT=8000
+      - WORKER_CAPACITY=5
+    depends_on:
+      - game_router
     restart: always
     networks:
       - appnet
+    labels:
+      com.cloudappsgame.role: worker
+
+  autoscaler:
+    build:
+      context: ./websocketForGameServer
+      dockerfile: AutoscalerDockerfile
+    command: ["python", "autoscaler.py"]
+    environment:
+      - ROUTER_URL=http://game_router:7000
+      - AUTOSCALER_MIN_WORKERS=1
+      - AUTOSCALER_MAX_WORKERS=10
+      - AUTOSCALER_SCALE_STEP=1
+      - AUTOSCALER_POLL_SECONDS=10
+      - AUTOSCALER_SERVICE=game_server
+      - COMPOSE_FILE_PATH=/workspace/docker-compose.yaml
+      - COMPOSE_PROJECT_NAME=cloudappsgame
+    depends_on:
+      - game_router
+    restart: always
+    networks:
+      - appnet
+    volumes:
+      - ./:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
   appnet:

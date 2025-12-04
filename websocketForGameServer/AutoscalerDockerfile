@@ -1,0 +1,9 @@
+FROM python:3.12-alpine
+
+# Install docker client and compose plugin for scaling commands
+RUN apk add --no-cache docker-cli docker-cli-compose
+
+WORKDIR /app
+COPY autoscaler.py /app/autoscaler.py
+
+CMD ["python", "autoscaler.py"]
