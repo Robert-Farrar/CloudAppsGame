@@ -238,6 +238,8 @@
     <script>
 let ws = null;
 let reconnectTimeout = null;
+
+
 let popupInstance = null;
 let userId = null;
 let gameId = 1;  // You hardcoded 1 — keeping that
@@ -331,6 +333,12 @@ function connectWebSocket() {
         ) {
             enableCardDraw();
         }
+
+
+        if(msg.type === "FINISH"){
+            console.log("Redirecting to leaderboard");
+            window.location.href = "/end"; // Redirect to the game page
+        }
     });
 
     ws.addEventListener("close", (event) => {
@@ -387,7 +395,8 @@ function connectWebSocket() {
                         value: card.value,
                         operator: card.sign,
                         user_id: String(userId),
-                        game_id: String(gameId),
+                        username: username,
+                        game_id: String(gameId)
                     },
                 })
             );
@@ -448,27 +457,26 @@ function Popup(popup) {
         form.onsubmit = (e) => {
             e.preventDefault();
 
-            let answer = form.querySelector("input[name='ans']").value;
+            const answer = form.querySelector("input[name='ans']").value;
             if (!answer) {
                 answer = -999;
             } else {
                 answer = parseFloat(answer);
             }
 
-            if (ws && ws.readyState === WebSocket.OPEN) {
+            if (ws.readyState === WebSocket.OPEN) {
                 ws.send(
                     JSON.stringify({
                         type: "ANSWER",
                         payload: {
                             answer,
                             user_id: userId,
-                            game_id: gameId,
+                            username: username,
+                            game_id: gameId
                         },
                     })
                 );
                 console.log("ANSWER SENT:", answer);
-            } else {
-                console.error("WebSocket not ready. State:", ws ? ws.readyState : "ws is null");
             }
 
             this.unload();

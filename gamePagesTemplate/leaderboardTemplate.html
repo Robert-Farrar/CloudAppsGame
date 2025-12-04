@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaderboard - The Number Crunch</title>
+    <style>
+        body{
+          display: flex;
+          justify-content: flex-start;
+          align-items: center;
+          padding-top: 2%;
+          flex-direction: column;
+          text-align: center;
+          min-height: 100vh;
+        }
+        table {
+            width: 400px;
+            height: auto;
+            border-collapse: collapse;
+            border-style: solid;
+            border-width: 2px;
+            border-color: #000;
+            margin: 0 auto;
+        }
+        .line{
+            border-bottom: 2px solid #000;
+            border-style: double;
+        }
+        tr, td, th {
+            border: 1px solid #000;
+            padding: 8px 12px;
+            text-align: center;
+        }
+    </style>
+</head>
+<header>
+    
+</header>
+<body>
+
+<h1>Leaderboard</h1>
+
+<table class="table">
+         <thead>
+            <tr>
+                <th class="line">Rank</th>
+                <th class="line">Username</th>
+                <th class="line">Score</th>                                        
+            </tr>
+         </thead>
+         <tbody id="tableBody">
+           
+         </tbody>
+   </table>
+  <script>
+let ws;
+let userId;
+let username;
+
+window.addEventListener("DOMContentLoaded", () => {
+    console.log("DOM loaded → Connecting websocket...");
+    userId = sessionStorage.getItem('user_id');
+    username = sessionStorage.getItem('username');
+    connectWebSocket();
+});
+
+function connectWebSocket() {
+    ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+    ws.onopen = () => {
+        console.log("WebSocket connected.");
+
+        ws.send(JSON.stringify({
+            type: "CONNECT",
+            payload: {
+                user_id: userId,
+                username: username
+            }
+        }));
+
+
+        ws.send(JSON.stringify({
+            type: "LEADERBOARD_REQUEST",
+            payload: {
+                user_id: userId
+            }
+    }));
+
+    console.log("LEADERBOARD_REQUEST sent.");
+    };
+
+    ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(event.data);
+        console.log("WS MESSAGE:", msg);
+
+        // New: leaderboard handler
+        if (msg.type === "LEADERBOARD") {
+            console.log("Received leaderboard:", msg.data);
+            populateLeaderboard(msg.data);
+        }
+    });
+
+    ws.onclose = () => {
+        console.warn("WS closed. Reconnecting...");
+        setTimeout(connectWebSocket, 1500);
+    };
+
+    ws.onerror = (err) => {
+        console.error("WS ERROR:", err);
+    };
+}
+
+/**
+ * Populate leaderboard table using data from server.
+ * Expected format:
+ * [
+ *   { username: "Alice", points: 3 },
+ *   { username: "Bob", points: 5 }
+ * ]
+ */
+function populateLeaderboard(data) {
+    const tableBody = document.getElementById("tableBody");
+    tableBody.innerHTML = ""; // Clear existing rows
+
+    if (!Array.isArray(data)) {
+        console.error("Invalid leaderboard format:", data);
+        return;
+    }
+
+
+    // Add rows
+    data.forEach((player, index) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${player.username}</td>
+            <td>${player.points}</td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+</script>
+
+
+</body>
+</html>
