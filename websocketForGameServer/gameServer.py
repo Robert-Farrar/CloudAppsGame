@@ -252,19 +252,23 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 # Send POINT message to the winner
                 await send_message(USERS[user_id], "POINT", {"points": playerPool[user_id]["points"]})
                 
+                # broadcast to all players here
+                await broadcast_game_state(game_id, result_state)
+
+                # Move turn logic
+                next_player = get_next_player(user_id)
+                currentTurnPlayerID = next_player
+                await send_status_to_player(next_player, "It is now your turn.")
             else:
                 # Send WRONG message to the player
                 await send_message(USERS[user_id], "WRONG", {})
-            
-            # broadcast to all players here
-            await broadcast_game_state(game_id, result_state)
+                    
+                # If no winner was declared, get the current player and move to next
+                if CURRENT_BATTLE["winner"] is None:
+                    next_player = get_next_player(user_id)
+                    currentTurnPlayerID = next_player
+                    await send_status_to_player(next_player, "It is now your turn.")
 
-
-            # Move turn logic
-            next_player = get_next_player(user_id)
-            currentTurnPlayerID = next_player
-            await send_status_to_player(next_player, "It is now your turn.")
-            
             return  # Stop further processing
 
     except json.JSONDecodeError:
