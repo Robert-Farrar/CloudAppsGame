@@ -169,6 +169,30 @@
         font-size: 40px;
         font-weight: bold;
         }
+        #correctMessage {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 80px;
+            font-weight: bold;
+            color: green;
+            text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00;
+            display: none;
+            z-index: 250;
+        }
+        #wrongMessage {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 80px;
+            font-weight: bold;
+            color: red;
+            text-shadow: 0 0 10px red, 0 0 20px red;
+            display: none;
+            z-index: 250;
+        }
 
     </style>
 </head>
@@ -206,6 +230,9 @@
             <button type="submit" id="btnAnswer" onclick="closeform()"></button> 
         </form> 
     </div>
+
+    <div id="correctMessage">+1</div>
+    <div id="wrongMessage">Wrong!</div>
 
     <script src="cardDeck.js"></script><!-- Script for flip card: Holds all possible cards and a get random card method -->
     <script>
@@ -266,6 +293,14 @@ function connectWebSocket() {
             msg.type === "BATTLE" ||
             msg.data?.type === "BATTLE";
 
+        const isPoint =
+            msg.type === "POINT" ||
+            msg.data?.type === "POINT";
+
+        const isWrong =
+            msg.type === "WRONG" ||
+            msg.data?.type === "WRONG";
+
         if (isBattle) {
             console.warn("BATTLE EVENT RECEIVED:", msg.data);
 
@@ -276,6 +311,18 @@ function connectWebSocket() {
             }
 
             popupInstance.load(msg.data);
+            return;
+        }
+
+        if (isPoint) {
+            console.log("POINT EVENT RECEIVED:", msg.data);
+            popupInstance.showCorrect();
+            return;
+        }
+
+        if (isWrong) {
+            console.log("WRONG EVENT RECEIVED:", msg.data);
+            popupInstance.showWrong();
             return;
         }
 
@@ -387,6 +434,8 @@ function Popup(popup) {
     this.counter = 10;
     this.countDownEl = popup.querySelector("#countDown");
     this.battleQuestionEl = document.getElementById("battleQuestion");
+    this.correctMsgEl = document.getElementById("correctMessage");
+    this.wrongMsgEl = document.getElementById("wrongMessage");
 
     this.load = (battleData) => {
         console.log("Popup.load():", battleData);
@@ -409,7 +458,11 @@ function Popup(popup) {
             e.preventDefault();
 
             const answer = form.querySelector("input[name='ans']").value;
-            if (!answer) return;
+            if (!answer) {
+                answer = -999;
+            } else {
+                answer = parseFloat(answer);
+            }
 
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(
@@ -432,15 +485,59 @@ function Popup(popup) {
         // Countdown
         this.timer = setInterval(() => {
             this.counter--;
-            if (this.counter < 0) this.unload();
-            else this.countDownEl.textContent = this.counter;
+            if (this.counter < 0) {
+                // Auto-submit on timeout - manually trigger the answer submission
+                let answer = form.querySelector("input[name='ans']").value;
+                if (!answer) {
+                    answer = -999;
+                } else {
+                    answer = parseFloat(answer);
+                }
+
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(
+                        JSON.stringify({
+                            type: "ANSWER",
+                            payload: {
+                                answer,
+                                user_id: userId,
+                                game_id: gameId,
+                            },
+                        })
+                    );
+                    console.log("ANSWER SENT (timeout):", answer);
+                }
+                this.unload();
+            } else {
+                this.countDownEl.textContent = this.counter;
+            }
         }, 1000);
+    };
+
+    this.showCorrect = () => {
+        this.correctMsgEl.style.display = "block";
+        setTimeout(() => {
+            this.correctMsgEl.style.display = "none";
+        }, 2000);
+    };
+
+    this.showWrong = () => {
+        console.log("Showing wrong message");
+        this.wrongMsgEl.style.display = "block";
+        setTimeout(() => {
+            this.wrongMsgEl.style.display = "none";
+        }, 2000);
     };
 
     this.unload = () => {
         popup.style.display = "none";
         clearInterval(this.timer);
         this.timer = null;
+        // Clear the input field for the next battle
+        const form = popup.querySelector("form");
+        if (form) {
+            form.querySelector("input[name='ans']").value = "";
+        }
     };
 }
 </script>
