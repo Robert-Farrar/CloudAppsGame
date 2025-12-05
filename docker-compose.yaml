@@ -63,6 +63,7 @@ services:
       - AUTOSCALER_SERVICE=game_server
       - COMPOSE_FILE_PATH=/workspace/docker-compose.yaml
       - COMPOSE_PROJECT_NAME=cloudappsgame
+      - AUTOSCALER_TARGET_GAMES_PER_WORKER=1
     depends_on:
       - game_router
     restart: always

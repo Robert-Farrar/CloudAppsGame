@@ -5,6 +5,7 @@ import subprocess
 import time
 import urllib.request
 from typing import Dict
+import math
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -14,6 +15,7 @@ MAX_WORKERS = int(os.getenv("AUTOSCALER_MAX_WORKERS", "100"))
 MIN_WORKERS = int(os.getenv("AUTOSCALER_MIN_WORKERS", "1"))
 SCALE_SERVICE = os.getenv("AUTOSCALER_SERVICE", "game_server")
 SCALE_STEP = int(os.getenv("AUTOSCALER_SCALE_STEP", "1"))
+TARGET_GAMES_PER_WORKER = float(os.getenv("AUTOSCALER_TARGET_GAMES_PER_WORKER", "1"))
 COMPOSE_FILE = os.getenv("COMPOSE_FILE_PATH", "/workspace/docker-compose.yaml")
 
 
@@ -67,15 +69,22 @@ def decide_scale(status: Dict) -> int:
     capacity = total_capacity(status)
     games = len(status.get("games", {}))
 
+    # Target workers based on desired games/worker
+    desired_by_games = max(MIN_WORKERS, math.ceil(games / TARGET_GAMES_PER_WORKER)) if TARGET_GAMES_PER_WORKER > 0 else workers
+
     # If no capacity left, scale up
     if available == 0 and workers < MAX_WORKERS:
-        return min(MAX_WORKERS, workers + SCALE_STEP)
+        desired_by_capacity = workers + SCALE_STEP
+    else:
+        desired_by_capacity = workers
 
-    # If most capacity is idle, scale down cautiously
+    desired = min(MAX_WORKERS, max(desired_by_games, desired_by_capacity))
+
+    # If most capacity is idle, scale down cautiously (but not below desired_by_games)
     if capacity > 0 and available >= capacity - 1 and workers > MIN_WORKERS:
-        return max(MIN_WORKERS, workers - SCALE_STEP)
+        desired = max(desired_by_games, workers - SCALE_STEP, MIN_WORKERS)
 
-    return workers
+    return desired
 
 
 def main():

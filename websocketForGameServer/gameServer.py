@@ -5,6 +5,7 @@ import os
 import socket
 import traceback
 import urllib.request
+import uuid
 from typing import Dict, Any, Optional, List
 
 import websockets
@@ -23,6 +24,8 @@ USERS = {}
 game_timer_started = False
 game_timer_task = None
 leaderboard = []
+GAME_STARTED: Dict[str, bool] = {}
+CURRENT_OPEN_ALLOCATION: Optional[Dict[str, Any]] = None
 
 CURRENT_BATTLE = {
     "active": False,
@@ -34,6 +37,8 @@ CURRENT_BATTLE = {
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 DEFAULT_WORKER_CAPACITY = 5
+PUBLIC_HOST = os.getenv("PUBLIC_HOST")
+PUBLIC_PORT = os.getenv("PUBLIC_PORT")
 
 
 def register_with_router():
@@ -47,8 +52,9 @@ def register_with_router():
         return
 
     worker_id = os.getenv("WORKER_ID") or socket.gethostname()
-    worker_host = os.getenv("WORKER_HOST", worker_id)
-    worker_port = int(os.getenv("WORKER_PORT", os.getenv("PORT", "8000")))
+    # PUBLIC_* let us advertise an externally reachable host/port (e.g., nginx front door)
+    worker_host = PUBLIC_HOST or os.getenv("WORKER_HOST", worker_id)
+    worker_port = int(PUBLIC_PORT or os.getenv("WORKER_PORT", os.getenv("PORT", "8000")))
     capacity = int(os.getenv("WORKER_CAPACITY", str(DEFAULT_WORKER_CAPACITY)))
 
     payload = {
@@ -67,6 +73,89 @@ def register_with_router():
             logging.info("Registered worker %s with router (%s): %s", worker_id, url, response.status)
     except Exception as exc:
         logging.warning("Could not register worker %s with router at %s: %s", worker_id, url, exc)
+
+
+def reserve_game_slot_with_router(game_id: str):
+    """
+    Inform the router that this worker is now hosting the given game_id so capacity is consumed.
+    """
+    router_url = os.getenv("ROUTER_URL")
+    worker_id = os.getenv("WORKER_ID") or socket.gethostname()
+    if not router_url:
+        return
+
+    payload = {"game_id": game_id, "worker_id": worker_id}
+    url = f"{router_url.rstrip('/')}/games/allocate"
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            logging.info("Reserved game %s on router for worker %s (%s)", game_id, worker_id, response.status)
+    except Exception as exc:
+        logging.warning("Could not reserve game %s with router: %s", game_id, exc)
+
+
+def request_new_game_allocation() -> Dict[str, Any]:
+    """
+    Ask the router for a new game assignment and return connection info for clients.
+    """
+    router_url = os.getenv("ROUTER_URL")
+    game_id = str(uuid.uuid4())
+    if not router_url:
+        host = PUBLIC_HOST
+        port = PUBLIC_PORT
+        return {"game_id": game_id, "host": host, "port": port}
+
+    payload = {"game_id": game_id}
+    url = f"{router_url.rstrip('/')}/games/allocate"
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            if response.status == 200:
+                body = json.loads(response.read().decode("utf-8"))
+                worker = body.get("worker", {})
+                host = PUBLIC_HOST or worker.get("host")
+                port = PUBLIC_PORT or worker.get("port")
+                return {"game_id": game_id, "host": host, "port": port}
+    except Exception as exc:
+        logging.warning("Could not allocate new game via router: %s", exc)
+
+    return {"game_id": game_id, "host": None, "port": None}
+
+
+def is_game_started(game_id: str) -> bool:
+    return GAME_STARTED.get(game_id, False)
+
+
+def mark_game_started(game_id: str):
+    GAME_STARTED[game_id] = True
+    global CURRENT_OPEN_ALLOCATION
+    if CURRENT_OPEN_ALLOCATION and CURRENT_OPEN_ALLOCATION.get("game_id") == game_id:
+        CURRENT_OPEN_ALLOCATION = request_new_game_allocation()
+
+
+def get_open_allocation() -> Dict[str, Any]:
+    """
+    Returns the current open game allocation, allocating a new one if the previous started.
+    """
+    global CURRENT_OPEN_ALLOCATION
+    if CURRENT_OPEN_ALLOCATION and not is_game_started(CURRENT_OPEN_ALLOCATION.get("game_id", "")):
+        return CURRENT_OPEN_ALLOCATION
+
+    CURRENT_OPEN_ALLOCATION = request_new_game_allocation()
+    return CURRENT_OPEN_ALLOCATION
+
+
+def is_allocation_local(allocation: Dict[str, Any]) -> bool:
+    host = allocation.get("host")
+    port = str(allocation.get("port") or "")
+    # If host is not provided, treat as local (use same entrypoint)
+    if not host:
+        return True
+    return (host == PUBLIC_HOST or host == os.getenv("WORKER_HOST") or host == socket.gethostname()) and (
+        not PUBLIC_PORT or not port or port == str(PUBLIC_PORT)
+    )
 
 
 # --- WebSocket & Broadcast Logic ---
@@ -149,27 +238,46 @@ async def handle_message(websocket: ServerProtocol, message: str):
         
         # User ID is mandatory for game actions
         user_id_str = payload.get("user_id", "") 
-        game_id = payload.get("game_id", "")
+        game_id = payload.get("game_id", "") or ""
 
         user_id = int(user_id_str)
 
 
         if msg_type == "CONNECT":
             username = payload.get("username")
+            allocation = None
+
+            # If client did not supply a game_id, attach to the current open allocation
+            if not game_id:
+                allocation = get_open_allocation()
+                game_id = allocation.get("game_id")
+            else:
+                allocation = {"game_id": game_id, "host": None, "port": None}
+
+            # If that game is already started, redirect to a fresh allocation
+            if is_game_started(game_id):
+                redirect = get_open_allocation()
+                await send_message(websocket, "REDIRECT", redirect)
+                return
+
+            # If the game allocation points to another host/port, redirect the client there
+            if allocation and not is_allocation_local(allocation):
+                await send_message(websocket, "REDIRECT", allocation)
+                return
+
             user_id = await register(websocket, user_id, username)
-            initial_game_id = "1"
-            
             USERS[user_id] = websocket
 
             # Send back CONNECTED message with user_id
             response = {
                 "type": "CONNECTED",
                 "data": {
-                    "user_id": user_id
+                    "user_id": user_id,
+                    "game_id": game_id,
                 }
             }
             await websocket.send(json.dumps(response))  # Send the response back to the client
-            print(f"User {username} connected with user_id={user_id}")
+            print(f"User {username} connected with user_id={user_id} game_id={game_id}")
 
 
         elif msg_type == "PLAY_CARD" and game_id:
@@ -186,6 +294,11 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 card_color = payload.get("color")
                 card_operator = payload.get("operator")
                 user_id = int(payload.get("user_id"))
+
+                if not is_game_started(game_id):
+                    mark_game_started(game_id)
+                    reserve_game_slot_with_router(game_id or "default")
+                    await broadcast_game_state(game_id or "default", {"type": "GAME_STARTED"})
 
                 logging.info("Checking card")
                 event, card1, card2 = await checkCard(card_value, card_color, card_operator, user_id)
@@ -357,16 +470,6 @@ async def game_handler(websocket: ServerProtocol):
             payload = data.get("payload")
 
             user_id = int(payload.get("user_id"))
-
-            username = payload.get("username")
-
-            if user_id in USERS:
-                # If the user_id already exists, handle reconnect logic
-                logging.info(f"Reconnecting existing user {user_id}")
-                await unregister(user_id)  # Clean up old connection
-
-                # Register the new user (or reconnecting)
-                await register(websocket, user_id, username)
 
             # Now handle game messages after registration
             await handle_message(websocket, message)
