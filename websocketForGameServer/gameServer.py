@@ -249,6 +249,19 @@ async def handle_message(websocket: ServerProtocol, message: str):
                     "correct_answer": CURRENT_BATTLE["answer"],
                     "points": playerPool[user_id]["points"]
                 }
+
+                if playerPool[user_id].get("points", 0) < 3:
+                    await broadcast_game_state(game_id, result_state)
+                else:
+                    global leaderboard
+                    leaderboard = get_final_scores()
+
+                    logging.info(f"Leaderboard saved: {leaderboard}")
+
+                    await send_message_to_all({
+                        "type": "FINISH",
+                        "data": {}
+                    })
                 
                 # Send POINT message to the winner
                 await send_message(USERS[user_id], "POINT", {"points": playerPool[user_id]["points"]})
@@ -323,15 +336,6 @@ async def game_handler(websocket: ServerProtocol):
 
             username = payload.get("username")
 
-            if user_id in USERS:
-                # If the user_id already exists, handle reconnect logic
-                logging.info(f"Reconnecting existing user {user_id}")
-                await unregister(user_id)  # Clean up old connection
-
-                # Register the new user (or reconnecting)
-                await register(websocket, user_id, username)
-
-            # Now handle game messages after registration
             await handle_message(websocket, message)
 
     except websockets.ConnectionClosedOK:
