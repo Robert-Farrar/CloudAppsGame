@@ -286,6 +286,12 @@ function connectWebSocket() {
         ) {
             enableCardDraw();
         }
+
+
+        if(msg.type === "FINISH"){
+            console.log("Redirecting to leaderboard");
+            window.location.href = "/end"; // Redirect to the game page
+        }
     });
 
     ws.addEventListener("close", (event) => {
@@ -342,7 +348,8 @@ function connectWebSocket() {
                         value: card.value,
                         operator: card.sign,
                         user_id: String(userId),
-                        game_id: String(gameId),
+                        username: username,
+                        game_id: String(gameId)
                     },
                 })
             );
@@ -411,7 +418,8 @@ function Popup(popup) {
                         payload: {
                             answer,
                             user_id: userId,
-                            game_id: gameId,
+                            username: username,
+                            game_id: gameId
                         },
                     })
                 );

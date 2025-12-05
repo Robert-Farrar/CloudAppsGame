@@ -22,6 +22,7 @@ currentTurnPlayerID = 0
 USERS = {}
 game_timer_started = False
 game_timer_task = None
+leaderboard = []
 
 CURRENT_BATTLE = {
     "active": False,
@@ -112,11 +113,12 @@ async def register(websocket: ServerProtocol, user_id: int, username: str):
     USERS[user_id] = websocket
 
     # Add player data to playerPool using user_id as key
-    playerPool[user_id] = {
-        "username": username,
-        "points": 0,
-        "card": {},  # Card data for the player
-    }
+    if not user_id in playerPool:
+        playerPool[user_id] = {
+            "username": username,
+            "points": 0,
+            "card": {},  # Card data for the player
+        }
 
     if len(USERS) == 4 and not game_timer_started:
         game_timer_started = True
@@ -186,7 +188,6 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 user_id = int(payload.get("user_id"))
 
                 logging.info("Checking card")
-                send_message(USERS[user_id], "STATUS", {"message": f"This is a test message"})
                 event, card1, card2 = await checkCard(card_value, card_color, card_operator, user_id)
                 logging.info(event)
 
@@ -268,7 +269,7 @@ async def handle_message(websocket: ServerProtocol, message: str):
 
             is_correct = False
             if user_answer is not None:
-                if abs(float(user_answer) - float(CURRENT_BATTLE["answer"])) < 0.01:
+                if round(float(user_answer), 2) == round(float(CURRENT_BATTLE["answer"]), 2):
                     is_correct = True
 
             if is_correct:
@@ -287,7 +288,18 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 }
                 
                 # broadcast to all players here
-                await broadcast_game_state(game_id, result_state)
+                if playerPool[user_id].get("points", 0) < 3:
+                    await broadcast_game_state(game_id, result_state)
+                else:
+                    global leaderboard
+                    leaderboard = get_final_scores()
+
+                    logging.info(f"Leaderboard saved: {leaderboard}")
+
+                    await send_message_to_all({
+                        "type": "FINISH",
+                        "data": {}
+                    })
 
 
                 # Move turn logic
@@ -296,6 +308,23 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 await send_status_to_player(next_player, "It is now your turn.")
 
             return  # Stop further processing
+        elif msg_type == "LEADERBOARD_REQUEST":
+            # Safely confirm player exists
+            if user_id not in playerPool:
+                return await send_message(websocket, "ERROR", {"message": "Unknown player."})
+
+            logging.info(f"Leaderboard being sent: {leaderboard}")
+
+            # Send leaderboard back to ONLY the requesting user
+            await send_message(
+                USERS[user_id],
+                "LEADERBOARD",
+                leaderboard
+            )
+
+            logging.info(f"Sent leaderboard to user {user_id}")
+            return
+            
 
     except json.JSONDecodeError:
         await send_message(websocket, "ERROR", {"message": "Invalid JSON format."})
@@ -332,7 +361,7 @@ async def game_handler(websocket: ServerProtocol):
             if user_id in USERS:
                 # If the user_id already exists, handle reconnect logic
                 logging.info(f"Reconnecting existing user {user_id}")
-                #await unregister(user_id)  # Clean up old connection
+                await unregister(user_id)  # Clean up old connection
 
                 # Register the new user (or reconnecting)
                 await register(websocket, user_id, username)
@@ -421,6 +450,26 @@ async def start_game_timer():
     for ws in USERS.values():
         await send_message(ws, "START", {})
     logging.info("Game START message sent to all players.")
+
+def get_final_scores():
+    # Build a list of players with username and points
+    scores = [
+        {
+            "username": playerPool[player_id]["username"],
+            "points": playerPool[player_id]["points"]
+        }
+        for player_id in playerPool
+    ]
+
+    # Sort from least → greatest by points
+    scores.sort(key=lambda p: p["points"], reverse=True)
+
+    # Return only top 10 if 10 or more players
+    if len(scores) >= 10:
+        return scores[:10]
+
+    # Otherwise return all
+    return scores
 
 
 async def main():

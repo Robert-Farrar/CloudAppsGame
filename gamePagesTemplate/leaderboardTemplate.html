@@ -54,32 +54,94 @@
          </tbody>
    </table>
   <script>
-    // Sample leaderboard data
-    const leaderboardData = [
-        { rank: 1, username: 'PlayerOne', score: 1500 },
-        { rank: 2, username: 'GamerGirl', score: 1450 },
-        { rank: 3, username: 'NoobMaster', score: 1400 },
-        { rank: 4, username: 'ProGamer', score: 1350 },
-        { rank: 5, username: 'Speedy', score: 1300 }
-    ];
+let ws;
+let userId;
+let username;
 
-    // Function to populate the leaderboard table
-    function populateLeaderboard() {
-        const tableBody = document.getElementById('tableBody');
-        leaderboardData.forEach(player => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${player.rank}</td>
-                <td>${player.username}</td>
-                <td>${player.score}</td>
-            `;
-            tableBody.appendChild(row);
-        });
+window.addEventListener("DOMContentLoaded", () => {
+    console.log("DOM loaded → Connecting websocket...");
+    userId = sessionStorage.getItem('user_id');
+    username = sessionStorage.getItem('username');
+    connectWebSocket();
+});
+
+function connectWebSocket() {
+    ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+    ws.onopen = () => {
+        console.log("WebSocket connected.");
+
+        ws.send(JSON.stringify({
+            type: "CONNECT",
+            payload: {
+                user_id: userId,
+                username: username
+            }
+        }));
+
+
+        ws.send(JSON.stringify({
+            type: "LEADERBOARD_REQUEST",
+            payload: {
+                user_id: userId
+            }
+    }));
+
+    console.log("LEADERBOARD_REQUEST sent.");
+    };
+
+    ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(event.data);
+        console.log("WS MESSAGE:", msg);
+
+        // New: leaderboard handler
+        if (msg.type === "LEADERBOARD") {
+            console.log("Received leaderboard:", msg.data);
+            populateLeaderboard(msg.data);
+        }
+    });
+
+    ws.onclose = () => {
+        console.warn("WS closed. Reconnecting...");
+        setTimeout(connectWebSocket, 1500);
+    };
+
+    ws.onerror = (err) => {
+        console.error("WS ERROR:", err);
+    };
+}
+
+/**
+ * Populate leaderboard table using data from server.
+ * Expected format:
+ * [
+ *   { username: "Alice", points: 3 },
+ *   { username: "Bob", points: 5 }
+ * ]
+ */
+function populateLeaderboard(data) {
+    const tableBody = document.getElementById("tableBody");
+    tableBody.innerHTML = ""; // Clear existing rows
+
+    if (!Array.isArray(data)) {
+        console.error("Invalid leaderboard format:", data);
+        return;
     }
 
-    // Populate the leaderboard on page load
-    window.onload = populateLeaderboard;
-  </script>
+
+    // Add rows
+    data.forEach((player, index) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${player.username}</td>
+            <td>${player.points}</td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+</script>
+
 
 </body>
 </html>
