@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  # Nginx proxxy
+  nginx:
+    container_name: nginx
+    build:
+      context: .
+      dockerfile: NginxDockerfile
+    ports:
+      - "81:80"             
+    # For now read only volume, this will have to change for when we get https so certbot can update expired certs  
+    depends_on:
+      - game_server                  
+    restart: always
+    networks:
+      - appnet
+
+  # Web / Application Server
+  game_server:
+    container_name: game_server
+    build:
+      context: ./websocketForGameServer
+      dockerfile: Dockerfile
+    expose:
+      - "8000"
+    restart: always
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge
+
+volumes:
+  dbdata:
+    driver: local
