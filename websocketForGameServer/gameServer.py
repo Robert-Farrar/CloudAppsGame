@@ -250,27 +250,29 @@ async def handle_message(websocket: ServerProtocol, message: str):
                     "points": playerPool[user_id]["points"]
                 }
                 
+                # Send POINT message to the winner
+                await send_message(USERS[user_id], "POINT", {"points": playerPool[user_id]["points"]})
+                
                 # broadcast to all players here
-                if playerPool[user_id].get("points", 0) < 3:
-                    await broadcast_game_state(game_id, result_state)
-                else:
-                    global leaderboard
-                    leaderboard = get_final_scores()
-
-                    logging.info(f"Leaderboard saved: {leaderboard}")
-
-                    await send_message_to_all({
-                        "type": "FINISH",
-                        "data": {}
-                    })
-
+                await broadcast_game_state(game_id, result_state)
 
                 # Move turn logic
                 next_player = get_next_player(user_id)
                 currentTurnPlayerID = next_player
                 await send_status_to_player(next_player, "It is now your turn.")
+            else:
+                # Send WRONG message to the player
+                await send_message(USERS[user_id], "WRONG", {})
+                    
+                # If no winner was declared, get the current player and move to next
+                if CURRENT_BATTLE["winner"] is None:
+                    next_player = get_next_player(user_id)
+                    currentTurnPlayerID = next_player
+                    await send_status_to_player(next_player, "It is now your turn.")
 
-            return  # Stop further processing
+
+            return  # Stop further processing        
+        
         elif msg_type == "LEADERBOARD_REQUEST":
             # Safely confirm player exists
             if user_id not in playerPool:
