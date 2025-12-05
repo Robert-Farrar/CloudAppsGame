@@ -399,6 +399,19 @@ async def handle_message(websocket: ServerProtocol, message: str):
                     "correct_answer": CURRENT_BATTLE["answer"],
                     "points": playerPool[user_id]["points"]
                 }
+
+                if playerPool[user_id].get("points", 0) < 3:
+                    await broadcast_game_state(game_id, result_state)
+                else:
+                    global leaderboard
+                    leaderboard = get_final_scores()
+
+                    logging.info(f"Leaderboard saved: {leaderboard}")
+
+                    await send_message_to_all({
+                        "type": "FINISH",
+                        "data": {}
+                    })
                 
                 # Send POINT message to the winner
                 await send_message(USERS[user_id], "POINT", {"points": playerPool[user_id]["points"]})
@@ -471,7 +484,8 @@ async def game_handler(websocket: ServerProtocol):
 
             user_id = int(payload.get("user_id"))
 
-            # Now handle game messages after registration
+            username = payload.get("username")
+
             await handle_message(websocket, message)
 
     except websockets.ConnectionClosedOK:

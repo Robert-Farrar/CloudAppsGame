@@ -317,6 +317,7 @@ function connectWebSocket() {
         if (isPoint) {
             console.log("POINT EVENT RECEIVED:", msg.data);
             popupInstance.showCorrect();
+
             return;
         }
 
@@ -457,7 +458,7 @@ function Popup(popup) {
         form.onsubmit = (e) => {
             e.preventDefault();
 
-            const answer = form.querySelector("input[name='ans']").value;
+            let answer = form.querySelector("input[name='ans']").value;
             if (!answer) {
                 answer = -999;
             } else {

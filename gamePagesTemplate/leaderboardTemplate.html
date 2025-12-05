@@ -3,57 +3,210 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Leaderboard - The Number Crunch</title>
+    <title>🏆 Leaderboard - The Number Crunch</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body{
+        :root {
+            /* Define a color palette for easy theme changes */
+            --bg-color: #1a1a2e; /* Deep dark blue */
+            --card-color: #2c2c54; /* Muted purple/blue card */
+            --highlight-color: #ffcc00; /* Vibrant Gold/Yellow */
+            --text-color: #e0e0f4; /* Light text with a hint of purple */
+            --border-color: #00bcd4; /* Cyan/Teal for borders & accents */
+            --shadow-light: rgba(255, 255, 255, 0.05);
+            --shadow-dark: rgba(0, 0, 0, 0.6);
+        }
+        
+        body {
           display: flex;
           justify-content: flex-start;
           align-items: center;
-          padding-top: 2%;
+          padding-top: 50px; 
           flex-direction: column;
           text-align: center;
           min-height: 100vh;
+          /* Subtle diagonal line pattern */
+          background: var(--bg-color);
+          background-image: linear-gradient(45deg, var(--card-color) 25%, transparent 25%, transparent 75%, var(--card-color) 75%, var(--card-color)),
+                            linear-gradient(-45deg, var(--card-color) 25%, transparent 25%, transparent 75%, var(--card-color) 75%, var(--card-color));
+          background-size: 20px 20px;
+          color: var(--text-color);
+          font-family: 'Poppins', sans-serif; /* Applied new font */
+          margin: 0;
         }
+
+        /* Main Header Styling */
+        .main-header {
+            width: 100%;
+            padding: 20px 0;
+            background: linear-gradient(90deg, #1a1a2e 0%, #0f4c75 50%, #1a1a2e 100%);
+            box-shadow: 0 5px 15px var(--shadow-dark);
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 20;
+        }
+        
+        /* Container to make the main content stand out */
+        .leaderboard-container {
+            width: 90%;
+            max-width: 650px;
+            margin-top: 40px;
+            background: var(--card-color);
+            border-radius: 20px;
+            padding: 25px;
+            /* Neumorphic/Elevated Shadow Effect */
+            box-shadow: 
+                -10px -10px 20px var(--shadow-light), 
+                10px 10px 30px var(--shadow-dark);
+            
+            position: sticky; 
+            top: 40px; 
+            z-index: 10;
+        }
+
+        h1 {
+            color: var(--highlight-color);
+            text-shadow: 0 0 15px rgba(255, 204, 0, 0.8), 0 0 5px rgba(255, 204, 0, 0.5); /* Glow effect */
+            margin-top: 0;
+            font-size: 3em;
+            font-weight: 700;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        h3 {
+             color: var(--border-color);
+             font-weight: 600;
+             letter-spacing: 1px;
+             text-transform: uppercase;
+             margin-bottom: 20px;
+        }
+
         table {
-            width: 400px;
-            height: auto;
-            border-collapse: collapse;
-            border-style: solid;
-            border-width: 2px;
-            border-color: #000;
-            margin: 0 auto;
+            width: 100%;
+            border-collapse: separate; 
+            border-spacing: 0 8px; /* Added spacing between rows */
+            margin: 20px 0;
+            background: none; /* Removed background from the table itself */
         }
-        .line{
-            border-bottom: 2px solid #000;
-            border-style: double;
+
+        /* Table header styling */
+        thead th {
+            background-color: var(--border-color);
+            color: var(--bg-color);
+            padding: 15px 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            position: sticky; 
+            top: 0;
+            z-index: 5;
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.4);
         }
+        
+        /* Rounded corners for the header */
+        thead tr th:first-child { border-top-left-radius: 10px; }
+        thead tr th:last-child { border-top-right-radius: 10px; }
+        
+        /* Table row styling */
+        tbody tr {
+            background-color: var(--card-color);
+            border-radius: 10px;
+            box-shadow: 0 4px 8px var(--shadow-dark);
+            transition: background-color 0.4s ease, transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.05); /* Subtle inner border */
+        }
+        
+        /* Alternating row color is now a subtle visual cue */
+        tbody tr:nth-child(even) {
+            background-color: #343468; /* Slightly different tone */
+        }
+
+        tbody tr:hover {
+            background-color: #4a4a8d; /* A more distinct hover color */
+            transform: translateY(-3px) scale(1.01); /* Lift up effect */
+            box-shadow: 0 15px 20px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 188, 212, 0.5); /* Glowing shadow */
+        }
+
         tr, td, th {
-            border: 1px solid #000;
-            padding: 8px 12px;
+            border: none;
+            padding: 15px 10px;
             text-align: center;
         }
+        
+        /* Player Name alignment */
+        tbody td:nth-child(2) {
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        /* Score styling */
+        tbody td:last-child {
+            font-weight: 700;
+            color: var(--highlight-color);
+            letter-spacing: 0.5px;
+        }
+
+        /* Rank specific styling */
+        .rank-cell {
+            font-weight: 700;
+            font-size: 1.4em;
+        }
+
+        .gold { 
+            color: var(--highlight-color); 
+            text-shadow: 0 0 8px rgba(255, 204, 0, 0.8);
+        }
+        .silver { 
+            color: silver; 
+            text-shadow: 0 0 5px rgba(192, 192, 192, 0.6);
+        }
+        .bronze { 
+            color: #cd7f32; 
+            text-shadow: 0 0 5px rgba(205, 127, 50, 0.6);
+        }
+        
+        /* Trophy Icon Spin */
+        .fa-trophy {
+            animation: spin 3s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
     </style>
 </head>
-<header>
-    
+<header class="main-header">
+    <h1><i class="fas fa-chart-line"></i> The Number Crunch Leaderboard</h1>
 </header>
 <body>
 
-<h1>Leaderboard</h1>
-
-<table class="table">
-         <thead>
+<div class="leaderboard-container">
+    <h3>Top Players</h3>
+    <table>
+        <thead>
             <tr>
-                <th class="line">Rank</th>
-                <th class="line">Username</th>
-                <th class="line">Score</th>                                        
+                <th style="width: 80px;">Rank</th>
+                <th>Player</th>
+                <th>Score</th>                            
             </tr>
-         </thead>
-         <tbody id="tableBody">
-           
-         </tbody>
-   </table>
-  <script>
+        </thead>
+        <tbody id="tableBody">
+           </tbody>
+    </table>
+</div>
+
+<script>
 let ws;
 let userId;
 let username;
@@ -66,11 +219,13 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 function connectWebSocket() {
-    ws = new WebSocket(`ws://${window.location.host}/ws`);
+    // Note: Assuming window.location.host is correct for WS connection
+    ws = new WebSocket(`ws://${window.location.host}/ws`); 
 
     ws.onopen = () => {
         console.log("WebSocket connected.");
 
+        // Send CONNECT message
         ws.send(JSON.stringify({
             type: "CONNECT",
             payload: {
@@ -79,22 +234,20 @@ function connectWebSocket() {
             }
         }));
 
-
+        // Request leaderboard data
         ws.send(JSON.stringify({
             type: "LEADERBOARD_REQUEST",
             payload: {
                 user_id: userId
             }
-    }));
-
-    console.log("LEADERBOARD_REQUEST sent.");
+        }));
+        console.log("LEADERBOARD_REQUEST sent.");
     };
 
     ws.addEventListener("message", (event) => {
         const msg = JSON.parse(event.data);
         console.log("WS MESSAGE:", msg);
 
-        // New: leaderboard handler
         if (msg.type === "LEADERBOARD") {
             console.log("Received leaderboard:", msg.data);
             populateLeaderboard(msg.data);
@@ -113,35 +266,52 @@ function connectWebSocket() {
 
 /**
  * Populate leaderboard table using data from server.
- * Expected format:
- * [
- *   { username: "Alice", points: 3 },
- *   { username: "Bob", points: 5 }
- * ]
+ * [ { username: "Alice", points: 3 }, ... ]
  */
 function populateLeaderboard(data) {
     const tableBody = document.getElementById("tableBody");
-    tableBody.innerHTML = ""; // Clear existing rows
+    tableBody.innerHTML = ""; 
 
     if (!Array.isArray(data)) {
         console.error("Invalid leaderboard format:", data);
         return;
     }
 
-
     // Add rows
     data.forEach((player, index) => {
+        const rank = index + 1;
+        let rankHtml = rank;
+        let rankClass = '';
+
+        // Apply trophy icons for top 3
+        if (rank === 1) {
+            rankHtml = `<i class="fas fa-crown rank-cell gold"></i>`; // Changed to crown for #1
+            rankClass = 'gold';
+        } else if (rank === 2) {
+            rankHtml = `<i class="fas fa-trophy rank-cell silver"></i>`; // Trophy for #2
+            rankClass = 'silver';
+        } else if (rank === 3) {
+            rankHtml = `<i class="fas fa-medal rank-cell bronze"></i>`;
+            rankClass = 'bronze';
+        }
+
         const row = document.createElement("tr");
+        if (player.username === username) {
+             // Highlight current user's row with a pulsing shadow
+             row.style.boxShadow = '0 0 15px rgba(0, 188, 212, 1)';
+             row.style.background = 'rgba(0, 188, 212, 0.3)';
+             row.classList.add('user-row-highlight');
+        }
+        
         row.innerHTML = `
-            <td>${index + 1}</td>
+            <td class="rank-cell ${rankClass}">${rankHtml}</td>
             <td>${player.username}</td>
-            <td>${player.points}</td>
+            <td>${player.points ? player.points.toLocaleString() : 0}</td>
         `;
         tableBody.appendChild(row);
     });
 }
 </script>
-
 
 </body>
 </html>
