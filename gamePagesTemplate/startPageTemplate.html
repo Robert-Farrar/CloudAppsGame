@@ -177,9 +177,9 @@
         showMessage('', '');
 
         const connectTarget = (host, port, gameId) => {
-          const targetHost = host || window.location.hostname;
-          const targetPort = port ? `:${port}` : (window.location.port ? `:${window.location.port}` : '');
-          const wsUrl = `ws://${targetHost}${targetPort}/ws`;
+          const targetHost = host || 'game_server';
+          const targetPort = port ? `:${port}` : ':8000';
+          const wsUrl = `ws://${window.location.host}/ws?target=${targetHost}${targetPort}`;
           console.log("Connecting to", wsUrl, "for game", gameId);
           return new WebSocket(wsUrl);
         };
@@ -206,6 +206,8 @@
               sessionStorage.setItem('username', userName);
               sessionStorage.setItem('game_id', currentGameId || '');
               showMessage('Connection successful, redirecting to game...', 'success');
+              // Close this socket before navigating to avoid server logging closed sends
+              try { ws.close(); } catch (e) {}
               setTimeout(() => { window.location.href = '/start'; }, 50);
             } else if (message.type === 'REDIRECT') {
               const { game_id, host, port } = message.data || message; // support both shapes
@@ -229,31 +231,25 @@
         };
 
         try {
-          startWs(null, null, currentGameId);
-
-
-
-
-          // Try to parse JSON response if available
-          let data;
-          const contentType = resp.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            data = await resp.json();
-          } else {
-            data = { message: await resp.text() };
+          // fetch open game allocation from router
+          const resp = await fetch('/router/games/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          if (!resp.ok) {
+            throw new Error('No capacity available. Please try again.');
           }
+          const data = await resp.json();
+          currentGameId = data.game_id;
+          const worker = data.worker || {};
+          // normalize host for docker/compose network
+          const normalizedHost = (worker.host === 'localhost' || worker.host === '127.0.0.1') ? 'game_server' : (worker.host || '');
+          // persist routing info so the loading page can reconnect to the same worker/game
+          sessionStorage.setItem('worker_host', normalizedHost);
+          sessionStorage.setItem('worker_port', worker.port != null ? worker.port : '');
+          sessionStorage.setItem('game_id', currentGameId || '');
+          startWs(normalizedHost, worker.port, currentGameId);
 
-          if (resp.ok) {
-            // Expect server to return a success message in JSON: { success: true, message: "..." }
-            showMessage(data.message || 'Started successfully.', 'success');
-            // Optionally clear the input:
-            // input.value = '';
-          } else {
-            // Server returned an error status; show message if provided
-            const errMsg = data && (data.error || data.message) ? (data.error || data.message) : ('Request failed with status ' + resp.status);
-            showMessage(errMsg, 'error');
-            // If server provides field errors, you can surface them here (not implemented by default)
-          }
+
+
+
         } catch (err) {
           // Network or CORS error
           showMessage('Network error: ' + (err.message || err), 'error');
@@ -265,9 +261,6 @@
 
       // Focus input on load for convenience
       window.addEventListener('DOMContentLoaded', () => { if (input) input.focus(); });
-      window.addEventListener("beforeunload", () => {
-      sessionStorage.setItem("user_id", user_id);
-      });
     })();
   </script>
 </body>

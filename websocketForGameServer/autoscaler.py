@@ -64,26 +64,10 @@ def total_capacity(status: Dict) -> int:
 
 
 def decide_scale(status: Dict) -> int:
-    workers = current_worker_count(status)
-    available = total_available_slots(status)
-    capacity = total_capacity(status)
-    games = len(status.get("games", {}))
-
-    # Target workers based on desired games/worker
-    desired_by_games = max(MIN_WORKERS, math.ceil(games / TARGET_GAMES_PER_WORKER)) if TARGET_GAMES_PER_WORKER > 0 else workers
-
-    # If no capacity left, scale up
-    if available == 0 and workers < MAX_WORKERS:
-        desired_by_capacity = workers + SCALE_STEP
-    else:
-        desired_by_capacity = workers
-
-    desired = min(MAX_WORKERS, max(desired_by_games, desired_by_capacity))
-
-    # If most capacity is idle, scale down cautiously (but not below desired_by_games)
-    if capacity > 0 and available >= capacity - 1 and workers > MIN_WORKERS:
-        desired = max(desired_by_games, workers - SCALE_STEP, MIN_WORKERS)
-
+    started = len(status.get("started_games", []))
+    # Keep one spare worker ready for the next game: started games + 1
+    desired = max(MIN_WORKERS, started + 1)
+    desired = min(MAX_WORKERS, desired)
     return desired
 
 

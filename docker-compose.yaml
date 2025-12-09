@@ -57,7 +57,7 @@ services:
     environment:
       - ROUTER_URL=http://game_router:7000
       - AUTOSCALER_MIN_WORKERS=1
-      - AUTOSCALER_MAX_WORKERS=10
+      - AUTOSCALER_MAX_WORKERS=3
       - AUTOSCALER_SCALE_STEP=1
       - AUTOSCALER_POLL_SECONDS=10
       - AUTOSCALER_SERVICE=game_server

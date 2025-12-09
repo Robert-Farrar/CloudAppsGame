@@ -10,88 +10,115 @@
 </head>
 <body>
     <div id="loading-screen" style="display: flex; justify-content: center; align-items: center; flex-direction: column; height: 100vh; background-color: #f0f0f0;">
-        <h1>Waiting for players, please wait...</h1>
+        <h1 id="statusText">Waiting for players, please wait...</h1>
         <img id="loadingAni" src="images/loading.gif" style="width: 149px; height: 34px;">
+        <div id="errorText" style="color:#b00020;margin-top:12px;"></div>
     </div>
 
 </body>
 
   <script>
 
-let userId = null
+let userId = null;
 let username = null;
+let gameId = null;
+let workerHost = null;
+let workerPort = null;
+let reconnectTimeout = null;
+
+function showStatus(text, isError = false) {
+    const statusEl = document.getElementById("statusText");
+    const errEl = document.getElementById("errorText");
+    if (statusEl) {
+        statusEl.textContent = text || "Waiting for players, please wait...";
+    }
+    if (errEl) {
+        errEl.textContent = isError ? text : "";
+    }
+}
 
 window.addEventListener("DOMContentLoaded", () => {
     userId = sessionStorage.getItem('user_id');
-    username = sessionStorage.getItem('username')
-    console.log("User ID from sessionStorage:", userId);
-
-    if (!userId) {
-        console.error("user_id is missing!");
-    } else {
-        console.log("user_id successfully retrieved.");
+    username = sessionStorage.getItem('username');
+    gameId = sessionStorage.getItem('game_id');
+    workerHost = sessionStorage.getItem('worker_host') || window.location.hostname;
+    if (workerHost === 'localhost' || workerHost === '127.0.0.1') {
+        workerHost = 'game_server';
     }
+    workerPort = sessionStorage.getItem('worker_port') || '';
+
+    console.log("User ID from sessionStorage:", userId);
+    console.log("Game ID from sessionStorage:", gameId);
+    console.log("Worker target:", workerHost, workerPort);
+
+    if (!userId || !gameId) {
+        showStatus("Missing session info. Please rejoin from the start page.", true);
+        return;
+    }
+
+    connectWebSocket();
 });
 
 function connectWebSocket() {
-    console.log("Connecting websocket...");
-    const ws = new WebSocket(`ws://${window.location.host}/ws`);
+    if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+    }
+
+    const targetHost = workerHost || 'game_server';
+    const targetPort = workerPort ? `:${workerPort}` : ':8000';
+    const wsUrl = `ws://${window.location.host}/ws?target=${targetHost}${targetPort}`;
+
+    console.log("Connecting websocket to", wsUrl, "for game", gameId);
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         console.log("WebSocket connected.");
-
-        // Send RECONNECT or CONNECT depending on your protocol
         ws.send(JSON.stringify({
             type: "CONNECT",
             payload: {
                 user_id: userId,
-                username: username
+                username: username,
+                game_id: gameId
             }
         }));
-
-        console.log("RECONNECT message sent.");
     };
 
     ws.addEventListener("close", (event) => {
         console.warn(`WS closed with code: ${event.code}, reason: ${event.reason}`);
         if (event.code !== 1000) {
-        console.warn("Reconnecting in 1.5s...");
-        reconnectTimeout = setTimeout(connectWebSocket, 1500);
-    }
+            console.warn("Reconnecting in 1.5s...");
+            reconnectTimeout = setTimeout(connectWebSocket, 1500);
+        }
+    });
+
+    ws.addEventListener("error", (event) => {
+        console.error("WebSocket error", event);
+        showStatus("Connection error. Retrying...", true);
     });
 
     ws.addEventListener("message", (event) => {
-    try {
-        const msg = JSON.parse(event.data);
-        console.log("WS MESSAGE:", msg);
+        try {
+            const msg = JSON.parse(event.data);
+            console.log("WS MESSAGE:", msg);
 
-        // Handle START message
-        if (msg.type === "START") {
-            console.log("Game is starting!");
-            console.log("Load successful, redirecting to game...", "success");
-            window.location.href = "/game"; // Redirect to the game page
-            return; // Exit early
+            if (msg.type === "START") {
+                console.log("Game is starting!");
+                window.location.href = "/game";
+                return;
+            }
+
+            if (msg.type === "ERROR") {
+                const errMsg = msg.data?.message || "Unknown error";
+                showStatus(errMsg, true);
+                return;
+            }
+
+        } catch (error) {
+            console.error("Error processing message:", error);
         }
-
-        // Handle ERROR messages
-        if (msg.type === "ERROR") {
-            showMessage(msg.data?.message || "Unknown error", "error");
-            return;
-        }
-
-        // Handle unknown message types
-        console.warn(`Unknown message type: ${msg.type}`, msg);
-
-    } catch (error) {
-        console.error("Error processing message:", error);
-    }
-});
+    });
 }
-
-
-
-
-window.addEventListener("DOMContentLoaded", connectWebSocket);
 
 </script>
 

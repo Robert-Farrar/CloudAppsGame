@@ -6,6 +6,7 @@ import socket
 import traceback
 import urllib.request
 import uuid
+import time
 from typing import Dict, Any, Optional, List
 
 import websockets
@@ -21,11 +22,11 @@ numPlayers = 0
 username = ""
 currentTurnPlayerID = 0
 USERS = {}
+ACTIVE_GAME_ID: Optional[str] = None
 game_timer_started = False
 game_timer_task = None
 leaderboard = []
 GAME_STARTED: Dict[str, bool] = {}
-CURRENT_OPEN_ALLOCATION: Optional[Dict[str, Any]] = None
 
 CURRENT_BATTLE = {
     "active": False,
@@ -53,7 +54,7 @@ def register_with_router():
 
     worker_id = os.getenv("WORKER_ID") or socket.gethostname()
     # PUBLIC_* let us advertise an externally reachable host/port (e.g., nginx front door)
-    worker_host = PUBLIC_HOST or os.getenv("WORKER_HOST", worker_id)
+    worker_host = PUBLIC_HOST or os.getenv("WORKER_HOST") or os.getenv("WORKER_SERVICE_NAME", "game_server")
     worker_port = int(PUBLIC_PORT or os.getenv("WORKER_PORT", os.getenv("PORT", "8000")))
     capacity = int(os.getenv("WORKER_CAPACITY", str(DEFAULT_WORKER_CAPACITY)))
 
@@ -130,21 +131,7 @@ def is_game_started(game_id: str) -> bool:
 
 def mark_game_started(game_id: str):
     GAME_STARTED[game_id] = True
-    global CURRENT_OPEN_ALLOCATION
-    if CURRENT_OPEN_ALLOCATION and CURRENT_OPEN_ALLOCATION.get("game_id") == game_id:
-        CURRENT_OPEN_ALLOCATION = request_new_game_allocation()
-
-
-def get_open_allocation() -> Dict[str, Any]:
-    """
-    Returns the current open game allocation, allocating a new one if the previous started.
-    """
-    global CURRENT_OPEN_ALLOCATION
-    if CURRENT_OPEN_ALLOCATION and not is_game_started(CURRENT_OPEN_ALLOCATION.get("game_id", "")):
-        return CURRENT_OPEN_ALLOCATION
-
-    CURRENT_OPEN_ALLOCATION = request_new_game_allocation()
-    return CURRENT_OPEN_ALLOCATION
+    notify_game_started(game_id)
 
 
 def is_allocation_local(allocation: Dict[str, Any]) -> bool:
@@ -158,10 +145,59 @@ def is_allocation_local(allocation: Dict[str, Any]) -> bool:
     )
 
 
+def request_open_game_allocation(retries: int = 3, delay: float = 0.5) -> Optional[Dict[str, Any]]:
+    router_url = os.getenv("ROUTER_URL")
+    if not router_url:
+        logging.error("ROUTER_URL not set; cannot fetch open game.")
+        return None
+
+    url = f"{router_url.rstrip('/')}/games/open"
+    payload = b"{}"
+    last_exc = None
+    for attempt in range(max(1, retries)):
+        req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=3) as response:
+                if response.status == 200:
+                    body = json.loads(response.read().decode("utf-8"))
+                    worker = body.get("worker", {})
+                    host = PUBLIC_HOST or worker.get("host")
+                    port = PUBLIC_PORT or worker.get("port")
+                    return {"game_id": body.get("game_id"), "host": host, "port": port}
+        except Exception as exc:
+            last_exc = exc
+            logging.warning("Could not fetch open game via router (attempt %s/%s): %s", attempt + 1, retries, exc)
+            time.sleep(delay)
+    logging.error("Failed to fetch open game after retries: %s", last_exc)
+    return None
+
+
+def notify_game_started(game_id: str):
+    router_url = os.getenv("ROUTER_URL")
+    if not router_url:
+        return
+    url = f"{router_url.rstrip('/')}/games/start"
+    payload = json.dumps({"game_id": game_id}).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    last_exc = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=3):
+                logging.info("Notified router that game %s started", game_id)
+                return
+        except Exception as exc:
+            last_exc = exc
+            logging.warning("Could not notify router about started game %s (attempt %s/3): %s", game_id, attempt + 1, exc)
+            time.sleep(0.5)
+    logging.error("Failed to notify router about started game %s after retries: %s", game_id, last_exc)
+
+
 # --- WebSocket & Broadcast Logic ---
 async def send_message(websocket: ServerProtocol, type: str, data: Dict):
     """Utility function to send structured JSON message, handling closed connections gracefully."""
     message = json.dumps({"type": type, "data": data})
+    if getattr(websocket, "closed", False):
+        return
     try:
         await websocket.send(message)
     except ConnectionClosed:
@@ -231,39 +267,28 @@ async def unregister(user_id: int):
 
 async def handle_message(websocket: ServerProtocol, message: str):
     """Parses incoming message and executes game logic."""
+    global ACTIVE_GAME_ID
     try:
         data = json.loads(message)
         msg_type = data.get("type")
         payload = data.get("payload", {})
         
         # User ID is mandatory for game actions
-        user_id_str = payload.get("user_id", "") 
+        user_id_str = payload.get("user_id")
         game_id = payload.get("game_id", "") or ""
 
-        user_id = int(user_id_str)
+        try:
+            user_id = int(user_id_str)
+        except (TypeError, ValueError):
+            user_id = 0
 
 
         if msg_type == "CONNECT":
             username = payload.get("username")
-            allocation = None
-
-            # If client did not supply a game_id, attach to the current open allocation
             if not game_id:
-                allocation = get_open_allocation()
-                game_id = allocation.get("game_id")
-            else:
-                allocation = {"game_id": game_id, "host": None, "port": None}
-
-            # If that game is already started, redirect to a fresh allocation
-            if is_game_started(game_id):
-                redirect = get_open_allocation()
-                await send_message(websocket, "REDIRECT", redirect)
-                return
-
-            # If the game allocation points to another host/port, redirect the client there
-            if allocation and not is_allocation_local(allocation):
-                await send_message(websocket, "REDIRECT", allocation)
-                return
+                # Backwards compatibility: allow clients that don't pass game_id (use default "1" or current active)
+                game_id = ACTIVE_GAME_ID or "1"
+            ACTIVE_GAME_ID = game_id
 
             user_id = await register(websocket, user_id, username)
             USERS[user_id] = websocket
@@ -296,9 +321,8 @@ async def handle_message(websocket: ServerProtocol, message: str):
                 user_id = int(payload.get("user_id"))
 
                 if not is_game_started(game_id):
-                    mark_game_started(game_id)
-                    reserve_game_slot_with_router(game_id or "default")
-                    await broadcast_game_state(game_id or "default", {"type": "GAME_STARTED"})
+                    await send_message(websocket, "STATUS", {"message": "Game has not started yet. Waiting for countdown to finish."})
+                    return
 
                 logging.info("Checking card")
                 event, card1, card2 = await checkCard(card_value, card_color, card_operator, user_id)
@@ -465,11 +489,9 @@ async def handle_message(websocket: ServerProtocol, message: str):
         
 # Helper to broadcast raw dict to all
 async def send_message_to_all(data: Dict):
-    message = json.dumps(data)
     websockets_to_send = list(USERS.values())
     if websockets_to_send:
-        # Create tasks for all sends
-        await asyncio.gather(*[ws.send(message) for ws in websockets_to_send], return_exceptions=True)
+        await asyncio.gather(*[send_message(ws, data.get("type", ""), data.get("data", {})) for ws in websockets_to_send], return_exceptions=True)
 
 #####GAME HANDLER#####
 async def game_handler(websocket: ServerProtocol):
@@ -482,7 +504,10 @@ async def game_handler(websocket: ServerProtocol):
             data = json.loads(message)
             payload = data.get("payload")
 
-            user_id = int(payload.get("user_id"))
+            try:
+                user_id = int(payload.get("user_id"))
+            except (TypeError, ValueError):
+                user_id = 0
 
             username = payload.get("username")
 
@@ -560,13 +585,10 @@ async def start_game_timer():
     
     await asyncio.sleep(15)
 
-    # Broadcast START to all players
-    message = {
-        "type": "START",
-        "data": {}
-    }
-
-    for ws in USERS.values():
+    # Broadcast START to all players and mark game started
+    if ACTIVE_GAME_ID:
+        mark_game_started(ACTIVE_GAME_ID)
+    for ws in list(USERS.values()):
         await send_message(ws, "START", {})
     logging.info("Game START message sent to all players.")
 
